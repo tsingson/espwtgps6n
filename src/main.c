@@ -69,8 +69,7 @@ void gps_rx_task(void *pvParameters) {
           ESP_LOGI(TAG, "[RMC Sentence - Recommended Minimum Navigation Data]");
           printf("%s\n", line);
         } else if (strstr(line, "$GN") != NULL) {
-          // Print any other valid multi-GNSS sentences (GSA, GSV, VTG etc.)
-          printf("%s\n", line);
+        //  printf("%s\n", line);
         }
         line = strtok(NULL, "\r\n");
       }
