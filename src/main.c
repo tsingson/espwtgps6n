@@ -40,53 +40,50 @@ void init_gps_uart(void) {
   ESP_LOGI(TAG, "UART2 successfully initialized at %d baud.", GPS_BAUD_RATE);
 }
 
-
-/**
 void gps_rx_task(void *pvParameters) {
-    uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
-    if (data == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for UART buffer.");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    ESP_LOGI(TAG, "Starting NMEA stream reader...");
-
-    while (1) {
-        // Read data from WT-GPS-6N
-        int len = uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1,
-pdMS_TO_TICKS(100));
-
-        if (len > 0) {
-            data[len] = '\0'; // Null-terminate the string
-
-            // Process the text line by line to extract standard NMEA data
-            char *line = strtok((char *)data, "\r\n");
-            while (line != NULL) {
-                // Look for common NMEA sentences
-                if (strstr(line, "$GNGGA") != NULL) {
-                    ESP_LOGI(TAG, "[GGA Sentence - Global Positioning System Fix
-Data]"); printf("%s\n", line); } else if (strstr(line, "$GNRMC") != NULL) {
-                    ESP_LOGI(TAG, "[RMC Sentence - Recommended Minimum
-Navigation Data]"); printf("%s\n", line); } else if (strstr(line, "$GN") !=
-NULL) {
-                    // Print any other valid multi-GNSS sentences (GSA, GSV, VTG
-etc.) printf("%s\n", line);
-                }
-                line = strtok(NULL, "\r\n");
-            }
-        }
-        // Yield to feed the FreeRTOS watchdog
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-
-    free(data);
+  uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
+  if (data == NULL) {
+    ESP_LOGE(TAG, "Failed to allocate memory for UART buffer.");
     vTaskDelete(NULL);
+    return;
+  }
+
+  ESP_LOGI(TAG, "Starting NMEA stream reader...");
+
+  while (1) {
+    // Read data from WT-GPS-6N
+    int len =
+        uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
+
+    if (len > 0) {
+      data[len] = '\0'; // Null-terminate the string
+
+      // Process the text line by line to extract standard NMEA data
+      char *line = strtok((char *)data, "\r\n");
+      while (line != NULL) {
+        // Look for common NMEA sentences
+        if (strstr(line, "$GNGGA") != NULL) {
+          ESP_LOGI(TAG, "[GGA Sentence - Global Positioning System Fix Data]");
+          printf("%s\n", line);
+        } else if (strstr(line, "$GNRMC") != NULL) {
+          ESP_LOGI(TAG, "[RMC Sentence - Recommended Minimum Navigation Data]");
+          printf("%s\n", line);
+        } else if (strstr(line, "$GN") != NULL) {
+          // Print any other valid multi-GNSS sentences (GSA, GSV, VTG etc.)
+          printf("%s\n", line);
+        }
+        line = strtok(NULL, "\r\n");
+      }
+    }
+    // Yield to feed the FreeRTOS watchdog
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+
+  free(data);
+  vTaskDelete(NULL);
 }
 
- */
-
-void gps_rx_task(void *pvParameters) {
+void gps_rx_task_deubg(void *pvParameters) {
   uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
   while (1) {
     // 无条件读取串口缓冲区
