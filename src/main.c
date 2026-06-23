@@ -6,15 +6,22 @@
 #include <stdio.h>
 #include <string.h>
 
+// 引入 minmea 头文件
+#include "minmea.h"
+
 static const char *TAG = "WT_GPS_6N";
 
-// Define UART parameters
 #define GPS_UART_NUM UART_NUM_2
-#define GPS_BAUD_RATE 115200 // 9600
+#define GPS_BAUD_RATE 115200
 #define BUF_SIZE 1024
 
-#define GPS_TX_PIN GPIO_NUM_33 // 对应板上标注的 D33，连接 GPS 的 RX
-#define GPS_RX_PIN GPIO_NUM_32 // 对应板上标注的 D32，连接 GPS 的 TX
+#define GPS_TX_PIN GPIO_NUM_33
+#define GPS_RX_PIN GPIO_NUM_32
+
+// 行缓冲区：最大容纳 128 字节的一行 NMEA 数据
+#define LINE_BUF_SIZE 128
+static char line_buffer[LINE_BUF_SIZE];
+static int line_idx = 0;
 
 void init_gps_uart(void) {
   const uart_config_t uart_config = {
@@ -25,24 +32,73 @@ void init_gps_uart(void) {
       .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
       .source_clk = UART_SCLK_DEFAULT,
   };
-
-  // Configure UART2 parameters
   ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM, &uart_config));
-
-  // Set UART2 pins (TX, RX, RTS, CTS)
   ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, GPS_TX_PIN, GPS_RX_PIN,
                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-
-  // Install UART driver with Rx buffer, no Tx buffer, no event queue
   ESP_ERROR_CHECK(
       uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0));
-
   ESP_LOGI(TAG, "UART2 successfully initialized at %d baud.", GPS_BAUD_RATE);
 }
 
+// 核心解析函数
+static void parse_nmea_sentence(const char *line) {
+  // 1. 验证 NMEA 校验和 (必选，剔除乱码)
+  if (!minmea_check(line, false)) {
+    return;
+  }
+
+  enum minmea_sentence_id id = minmea_sentence_id(line, false);
+  switch (id) {
+  case MINMEA_SENTENCE_GGA: {
+    struct minmea_sentence_gga frame;
+    if (minmea_parse_gga(&frame, line)) {
+      // 转换经纬度为标准的十进制浮点数
+      float lat = minmea_tocoord(&frame.latitude);
+      float lon = minmea_tocoord(&frame.longitude);
+      float alt = minmea_tofloat(&frame.altitude);
+
+      ESP_LOGI(TAG, "--- [GGA 定位数据] ---");
+      if (frame.fix_quality > 0) {
+        printf("  状态: 🟢 已定位 (模式:%d) | 卫星数: %d | 精度(HDOP): %.2f\n",
+               frame.fix_quality, frame.satellites_tracked,
+               minmea_tofloat(&frame.hdop));
+        printf("  坐标: 纬度 %.6f° , 经度 %.6f°\n", lat, lon);
+        printf("  海拔: %.1f 米\n", alt);
+      } else {
+        printf("  状态: 🔴 正在搜索卫星...\n");
+      }
+    }
+    break;
+  }
+  case MINMEA_SENTENCE_RMC: {
+    struct minmea_sentence_rmc frame;
+    if (minmea_parse_rmc(&frame, line)) {
+      ESP_LOGI(TAG, "--- [RMC 导航最小数据] ---");
+      if (frame.valid) {
+        // 转换速度（节 -> km/h）
+        float speed_kmh = minmea_tofloat(&frame.speed) * 1.852f;
+
+        // 打印北京时间 (+8小时)
+        int hour = (frame.time.hours + 8) % 24;
+        printf("  时间: 20%02d-%02d-%02d %02d:%02d:%02d (北京时间)\n",
+               frame.date.year, frame.date.month, frame.date.day, hour,
+               frame.time.minutes, frame.time.seconds);
+        printf("  速度: %.2f km/h | 航向: %.1f°\n", speed_kmh,
+               minmea_tofloat(&frame.course));
+      } else {
+        printf("  状态: 🔴 数据暂未生效\n");
+      }
+    }
+    break;
+  }
+  default:
+    break; // 忽略不需要的语句（如 GSV, GSA）
+  }
+}
+
 void gps_rx_task(void *pvParameters) {
-  uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
-  if (data == NULL) {
+  uint8_t *raw_buf = (uint8_t *)malloc(BUF_SIZE);
+  if (raw_buf == NULL) {
     ESP_LOGE(TAG, "Failed to allocate memory for UART buffer.");
     vTaskDelete(NULL);
     return;
@@ -51,67 +107,41 @@ void gps_rx_task(void *pvParameters) {
   ESP_LOGI(TAG, "Starting NMEA stream reader...");
 
   while (1) {
-    // Read data from WT-GPS-6N
+    // 从串口读取字节流
     int len =
-        uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
+        uart_read_bytes(GPS_UART_NUM, raw_buf, BUF_SIZE - 1, pdMS_TO_TICKS(50));
 
-    if (len > 0) {
-      data[len] = '\0'; // Null-terminate the string
+    for (int i = 0; i < len; i++) {
+      char c = raw_buf[i];
 
-      // Process the text line by line to extract standard NMEA data
-      char *line = strtok((char *)data, "\r\n");
-      while (line != NULL) {
-        // Look for common NMEA sentences
-        if (strstr(line, "$GNGGA") != NULL) {
-          ESP_LOGI(TAG, "[GGA Sentence - Global Positioning System Fix Data]");
-          printf("%s\n", line);
-        } else if (strstr(line, "$GNRMC") != NULL) {
-          ESP_LOGI(TAG, "[RMC Sentence - Recommended Minimum Navigation Data]");
-          printf("%s\n", line);
-        } else if (strstr(line, "$GN") != NULL) {
-        //  printf("%s\n", line);
+      // 数据拼装与按行切分机制（解决断帧隐患）
+      if (c == '\n' || c == '\r') {
+        if (line_idx > 0) {
+          line_buffer[line_idx] = '\0';
+          parse_nmea_sentence(line_buffer); // 交给解析器
+          line_idx = 0;                     // 重置行缓冲区
         }
-        line = strtok(NULL, "\r\n");
+      } else {
+        if (line_idx < LINE_BUF_SIZE - 1) {
+          line_buffer[line_idx++] = c;
+        } else {
+          line_idx = 0; // 缓冲区溢出保护，丢弃过长坏行
+        }
       }
     }
-    // Yield to feed the FreeRTOS watchdog
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 
-  free(data);
+  free(raw_buf);
   vTaskDelete(NULL);
 }
 
-void gps_rx_task_deubg(void *pvParameters) {
-  uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
-  while (1) {
-    // 无条件读取串口缓冲区
-    int len =
-        uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
-    if (len > 0) {
-      data[len] = '\0';
-      // 不做任何字符过滤，直接强行打印原始流
-      printf("%s", (char *)data);
-      fflush(stdout);
-    }
-    vTaskDelay(pdMS_TO_TICKS(10));
-  }
-}
-
 void app_main(void) {
-  // 关键修复：加入延时以等待系统完全稳定，抑制上电乱码
   vTaskDelay(pdMS_TO_TICKS(500));
-
-  // 强制将所有标签的日志输出级别调至最低的 INFO，防止被 menuconfig 过滤
   esp_log_level_set("*", ESP_LOG_INFO);
 
-  // 强制先打印一句最基础的纯文本，不走日志框架，用来测试串口是否活着
-  printf("\n--- ESP32 应用程序已成功启动 ---\n");
-  ESP_LOGI("BOOT", "开始初始化 GPS 串口...");
-
-  // 初始化 UART (此时已修改为 GPIO25/26)
+  printf("\n--- ESP32 GPS 智能解析系统已启动 ---\n");
   init_gps_uart();
 
-  // 创建任务
   xTaskCreatePinnedToCore(gps_rx_task, "gps_rx_task", 4096, NULL, 5, NULL, 1);
 }
