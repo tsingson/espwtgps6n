@@ -1,8 +1,8 @@
 // 修改 src/pm_manager.c 的开头部分，删除 static const char *TAG 声明：
 #include "pm_manager.h"
+#include "esp_log.h"
 #include "gps_drv.h"
 #include "gps_proc.h"
-#include "esp_log.h"
 #include <stdio.h>
 
 // 🟢 已移除 static const char *TAG = "PM_MGR"; 消除编译警告
@@ -11,15 +11,11 @@ volatile bool g_tasks_should_run = true;
 static SemaphoreHandle_t sleep_sem = NULL;
 // ... 后面保持完全不变 ...
 
-
-
-
-void pm_system_ipc_init(void) {
-  sleep_sem = xSemaphoreCreateBinary();
-}
+void pm_system_ipc_init(void) { sleep_sem = xSemaphoreCreateBinary(); }
 
 BaseType_t pm_wait_for_business_done(TickType_t xTicksToWait) {
-  if (sleep_sem == NULL) return pdFALSE;
+  if (sleep_sem == NULL)
+    return pdFALSE;
   return xSemaphoreTake(sleep_sem, xTicksToWait);
 }
 

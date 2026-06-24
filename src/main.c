@@ -1,14 +1,14 @@
 // 替换成修正后的 src/main.c
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <inttypes.h>
+#include <stdio.h>
 
-#include "pm_manager.h"
-#include "gps_proc.h"
 #include "gps_drv.h"
+#include "gps_proc.h"
+#include "pm_manager.h"
 
 void app_main(void) {
   esp_log_level_set("*", ESP_LOG_INFO);
@@ -21,13 +21,14 @@ void app_main(void) {
   g_tasks_should_run = true;
 
   // 3. 依次拉起业务解耦组件的任务
-  gps_drv_init();           // 🟢 关键修正：修改为正确的组件初始化函数名
+  gps_drv_init(); // 🟢 关键修正：修改为正确的组件初始化函数名
   gps_proc_create_tasks();
   gps_drv_create_rx_task();
 
   while (1) {
     uint32_t current_interval = get_gps_sleep_interval();
-    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)current_interval * 1000 * 1000));
+    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)current_interval *
+                                                  1000 * 1000));
 
     ESP_LOGI("MAIN", "=== 监测轮询开始，等待有效定位信号... ===");
     gps_proc_flush_console_buffer();
@@ -41,7 +42,8 @@ void app_main(void) {
     vTaskDelay(pdMS_TO_TICKS(80));
     gps_proc_flush_console_buffer();
 
-    ESP_LOGI("MAIN", "各外设配置正常，进入轻度休眠周期: %" PRIu32 " 秒", current_interval);
+    ESP_LOGI("MAIN", "各外设配置正常，进入轻度休眠周期: %" PRIu32 " 秒",
+             current_interval);
     gps_proc_flush_console_buffer();
 
     // 4. 业务做完了，调用 PM 管理中台隔离硬件并去睡觉
