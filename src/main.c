@@ -11,6 +11,9 @@
 #include "pm_manager.h"
 
 void app_main(void) {
+  // 关键修复：加入延时以等待系统完全稳定，抑制上电乱码
+  vTaskDelay(pdMS_TO_TICKS(500));
+
   esp_log_level_set("*", ESP_LOG_INFO);
   printf("\n--- 🟢 工业级模块化 GPS 监控系统固件已就绪 ---\n");
 
