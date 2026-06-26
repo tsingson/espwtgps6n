@@ -1,3 +1,27 @@
+
+#include "sdkconfig.h"
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+// ESP32 经典款引脚定义
+#define PIN_I2C_SDA 21
+#define PIN_I2C_SCL 22
+#define PIN_GPS_TX 17
+#define PIN_GPS_RX 16
+#define PIN_4G_TX 25
+#define PIN_4G_RX 26
+#elif defined CONFIG_IDF_TARGET_ESP32C3
+// ESP32-C3 引脚定义
+#define PIN_I2C_SDA 4
+#define PIN_I2C_SCL 5
+#define PIN_GPS_TX 6
+#define PIN_GPS_RX 7
+#define PIN_4G_TX 18
+#define PIN_4G_RX 19
+#else
+#error "未知的目标芯片类型"
+#endif
+
+
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -9,8 +33,8 @@
 #define GPS_UART_NUM UART_NUM_2
 #define GPS_BAUD_RATE 115200 // 9600
 #define BUF_SIZE (1024)
-#define PIN_GPS_TX 17 // gps tx0 ---> esp32 Rx2
-#define PIN_GPS_RX 16 // gps rx0 ----> esp32 tx2
+// #define PIN_GPS_TX 17 // gps tx0 ---> esp32 Rx2
+// #define PIN_GPS_RX 16 // gps rx0 ----> esp32 tx2
 
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -78,7 +102,7 @@ void gps_app_main(void) {
 
   // 3. 循环读取并打印
   uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
-  int count = 0;
+
   while (1) {
     // 读取串口数据，超时设置为 100ms
     int len =
@@ -88,18 +112,11 @@ void gps_app_main(void) {
       // 直接透传到 ESP32 自带的调试串口 (通常是 USB 虚拟串口或 UART0)
       printf("%s", (char *)data);
     }
-    if (count > 11) {
-      break;
-    }
-    count++;
+
   }
   free(data);
 }
 
 void app_main(void) {
   gps_app_main();
-  printf("finish....");
-  gps_enter_sleep();
-
-  vTaskDelay(pdMS_TO_TICKS(500000000));
 }
