@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char *TAG = "WT_GPS_6N";
+// static const char *TAG = "WT_GPS_6N";
 
 #define GPS_UART_NUM UART_NUM_2
 #define GPS_BAUD_RATE 115200
