@@ -7,8 +7,7 @@
 
 // 硬件配置
 #define GPS_UART_NUM UART_NUM_2
-#define GPS_BAUD_RATE                                                          \
-  115200 // 9600  // WT-GPS-6N 默认通常为 9600，若无数据请改为 115200
+#define GPS_BAUD_RATE 115200 // 9600
 #define BUF_SIZE (1024)
 #define PIN_GPS_TX 17 // gps tx0 ---> esp32 Rx2
 #define PIN_GPS_RX 16 // gps rx0 ----> esp32 tx2
