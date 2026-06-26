@@ -1,47 +1,42 @@
-#include <stdio.h>
-#include <string.h>
+#include "driver/uart.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/uart.h"
-#include "esp_log.h"
-
-// 硬件配置
-#define GPS_UART_NUM    UART_NUM_2
-#define GPS_BAUD_RATE   115200//9600  // WT-GPS-6N 默认通常为 9600，若无数据请改为 115200
-#define BUF_SIZE        (1024)
-#define PIN_GPS_TX      17
-#define PIN_GPS_RX      16
-
-static const char *TAG = "GPS_TEST";
-
-
 #include <stdio.h>
 #include <string.h>
+
+// 硬件配置
+#define GPS_UART_NUM UART_NUM_2
+#define GPS_BAUD_RATE                                                          \
+  115200 // 9600  // WT-GPS-6N 默认通常为 9600，若无数据请改为 115200
+#define BUF_SIZE (1024)
+#define PIN_GPS_TX 17 // gps tx0 ---> esp32 Rx2
+#define PIN_GPS_RX 16 // gps rx0 ----> esp32 tx2
+
 #include "driver/uart.h"
 #include "esp_log.h"
-
-#define GPS_UART_NUM    UART_NUM_2
-#define GPS_BAUD_RATE   9600
-#define PIN_GPS_TX      17
-#define PIN_GPS_RX      16
-#define BUF_SIZE        1024
+#include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "GPS_DRV";
 
 // GPS 初始化函数
-void gps_init(void) {
+void gps_init(int MY_PIN_GPS_TX, int MY_PIN_GPS_RX, int MY_GPS_UART_NUM,
+              int MY_GPS_BAUD_RATE) {
   uart_config_t uart_config = {
-    .baud_rate = GPS_BAUD_RATE,
-    .data_bits = UART_DATA_8_BITS,
-    .parity    = UART_PARITY_DISABLE,
-    .stop_bits = UART_STOP_BITS_1,
-    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    .source_clk = UART_SCLK_DEFAULT,
-};
+      .baud_rate = MY_GPS_BAUD_RATE,
+      .data_bits = UART_DATA_8_BITS,
+      .parity = UART_PARITY_DISABLE,
+      .stop_bits = UART_STOP_BITS_1,
+      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+      .source_clk = UART_SCLK_DEFAULT,
+  };
 
-  ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0));
-  ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM, &uart_config));
-  ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, PIN_GPS_TX, PIN_GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+  ESP_ERROR_CHECK(
+      uart_driver_install(MY_GPS_UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0));
+  ESP_ERROR_CHECK(uart_param_config(MY_GPS_UART_NUM, &uart_config));
+  ESP_ERROR_CHECK(uart_set_pin(MY_GPS_UART_NUM, MY_PIN_GPS_TX, MY_PIN_GPS_RX,
+                               UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
   ESP_LOGI(TAG, "GPS UART initialized.");
 }
@@ -61,32 +56,33 @@ void gps_enter_sleep(void) {
   ESP_LOGI(TAG, "GPS sleep command sent.");
 }
 
-
-
-
 void gps_app_main(void) {
   // 1. 配置 UART
-  uart_config_t uart_config = {
-    .baud_rate = GPS_BAUD_RATE,
-    .data_bits = UART_DATA_8_BITS,
-    .parity    = UART_PARITY_DISABLE,
-    .stop_bits = UART_STOP_BITS_1,
-    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    .source_clk = UART_SCLK_DEFAULT,
-};
+  //   uart_config_t uart_config = {
+  //     .baud_rate = GPS_BAUD_RATE,
+  //     .data_bits = UART_DATA_8_BITS,
+  //     .parity    = UART_PARITY_DISABLE,
+  //     .stop_bits = UART_STOP_BITS_1,
+  //     .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+  //     .source_clk = UART_SCLK_DEFAULT,
+  // };
+  //
+  //   // 2. 安装驱动
+  //   ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, 0, 0,
+  //   NULL, 0)); ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM,
+  //   &uart_config)); ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, PIN_GPS_TX,
+  //   PIN_GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
-  // 2. 安装驱动
-  ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0));
-  ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM, &uart_config));
-  ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, PIN_GPS_TX, PIN_GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+  gps_init(PIN_GPS_TX, PIN_GPS_RX, GPS_UART_NUM, GPS_BAUD_RATE);
 
   ESP_LOGI(TAG, "GPS UART initialized. Baudrate: %d", GPS_BAUD_RATE);
 
   // 3. 循环读取并打印
-  uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
+  uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
   while (1) {
     // 读取串口数据，超时设置为 100ms
-    int len = uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
+    int len =
+        uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
     if (len > 0) {
       data[len] = '\0'; // 结束符
       // 直接透传到 ESP32 自带的调试串口 (通常是 USB 虚拟串口或 UART0)
@@ -96,6 +92,4 @@ void gps_app_main(void) {
   free(data);
 }
 
-void app_main(void) {
-  gps_app_main();
-}
+void app_main(void) { gps_app_main(); }
