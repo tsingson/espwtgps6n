@@ -1,3 +1,5 @@
+#include "gps_init.h"
+#include "minmea.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -6,18 +8,17 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "minmea.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
 // static const char *TAG = "WT_GPS_6N";
 
-#define GPS_UART_NUM UART_NUM_2
-#define GPS_BAUD_RATE 115200
-#define BUF_SIZE 1024
-#define GPS_TX_PIN GPIO_NUM_33
-#define GPS_RX_PIN GPIO_NUM_32
+// #define GPS_UART_NUM UART_NUM_2
+// #define GPS_BAUD_RATE 115200
+// #define BUF_SIZE 1024
+// #define GPS_TX_PIN GPIO_NUM_33
+// #define GPS_RX_PIN GPIO_NUM_32
 
 #define LINE_BUF_SIZE 128
 static char line_buffer[LINE_BUF_SIZE];
@@ -73,32 +74,6 @@ uint32_t get_gps_sleep_interval(void) {
     }
   }
   return seconds;
-}
-
-void init_gps_uart(void) {
-  const uart_config_t uart_config = {
-      .baud_rate = GPS_BAUD_RATE,
-      .data_bits = UART_DATA_8_BITS,
-      .parity = UART_PARITY_DISABLE,
-      .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-      .source_clk = UART_SCLK_DEFAULT,
-  };
-  ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM, &uart_config));
-  ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, GPS_TX_PIN, GPS_RX_PIN,
-                               UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-  ESP_ERROR_CHECK(
-      uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0));
-}
-
-void deinit_gps_uart(void) {
-  uart_driver_delete(GPS_UART_NUM);
-  gpio_config_t io_conf = {.pin_bit_mask = (1ULL << GPS_RX_PIN),
-                           .mode = GPIO_MODE_INPUT,
-                           .pull_up_en = GPIO_PULLUP_DISABLE,
-                           .pull_down_en = GPIO_PULLDOWN_DISABLE,
-                           .intr_type = GPIO_INTR_DISABLE};
-  gpio_config(&io_conf);
 }
 
 static void check_and_push_data(void) {
