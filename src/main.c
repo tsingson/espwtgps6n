@@ -78,6 +78,7 @@ void gps_app_main(void) {
 
   // 3. 循环读取并打印
   uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
+  int count = 0;
   while (1) {
     // 读取串口数据，超时设置为 100ms
     int len =
@@ -87,8 +88,18 @@ void gps_app_main(void) {
       // 直接透传到 ESP32 自带的调试串口 (通常是 USB 虚拟串口或 UART0)
       printf("%s", (char *)data);
     }
+    if (count > 11) {
+      break;
+    }
+    count++;
   }
   free(data);
 }
 
-void app_main(void) { gps_app_main(); }
+void app_main(void) {
+  gps_app_main();
+  printf("finish....");
+  gps_enter_sleep();
+
+  vTaskDelay(pdMS_TO_TICKS(500000000));
+}
