@@ -22,7 +22,7 @@ static const char *TAG = "GPS_DRV";
 
 // GPS 初始化函数
 void gps_init(int MY_PIN_GPS_TX, int MY_PIN_GPS_RX, int MY_GPS_UART_NUM,
-              int MY_GPS_BAUD_RATE) {
+              int MY_GPS_BAUD_RATE, int MY_BUF_SIZE) {
   uart_config_t uart_config = {
       .baud_rate = MY_GPS_BAUD_RATE,
       .data_bits = UART_DATA_8_BITS,
@@ -33,7 +33,7 @@ void gps_init(int MY_PIN_GPS_TX, int MY_PIN_GPS_RX, int MY_GPS_UART_NUM,
   };
 
   ESP_ERROR_CHECK(
-      uart_driver_install(MY_GPS_UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0));
+      uart_driver_install(MY_GPS_UART_NUM, MY_BUF_SIZE * 2, 0, 0, NULL, 0));
   ESP_ERROR_CHECK(uart_param_config(MY_GPS_UART_NUM, &uart_config));
   ESP_ERROR_CHECK(uart_set_pin(MY_GPS_UART_NUM, MY_PIN_GPS_TX, MY_PIN_GPS_RX,
                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
@@ -73,7 +73,7 @@ void gps_app_main(void) {
   //   &uart_config)); ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, PIN_GPS_TX,
   //   PIN_GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
-  gps_init(PIN_GPS_TX, PIN_GPS_RX, GPS_UART_NUM, GPS_BAUD_RATE);
+  gps_init(PIN_GPS_TX, PIN_GPS_RX, GPS_UART_NUM, GPS_BAUD_RATE, BUF_SIZE);
 
   ESP_LOGI(TAG, "GPS UART initialized. Baudrate: %d", GPS_BAUD_RATE);
 
