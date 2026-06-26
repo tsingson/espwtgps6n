@@ -1,122 +1,88 @@
-
-#include "sdkconfig.h"
-
-#ifdef CONFIG_IDF_TARGET_ESP32
-// ESP32 经典款引脚定义
-#define PIN_I2C_SDA 21
-#define PIN_I2C_SCL 22
-#define PIN_GPS_TX 17
-#define PIN_GPS_RX 16
-#define PIN_4G_TX 25
-#define PIN_4G_RX 26
-#elif defined CONFIG_IDF_TARGET_ESP32C3
-// ESP32-C3 引脚定义
-#define PIN_I2C_SDA 4
-#define PIN_I2C_SCL 5
-#define PIN_GPS_TX 6
-#define PIN_GPS_RX 7
-#define PIN_4G_TX 18
-#define PIN_4G_RX 19
-#else
-#error "未知的目标芯片类型"
-#endif
-
-
-#include "driver/uart.h"
-#include "esp_log.h"
+#include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <stdio.h>
-#include <string.h>
-
-// 硬件配置
-#define GPS_UART_NUM UART_NUM_2
-#define GPS_BAUD_RATE 115200 // 9600
-#define BUF_SIZE (1024)
-// #define PIN_GPS_TX 17 // gps tx0 ---> esp32 Rx2
-// #define PIN_GPS_RX 16 // gps rx0 ----> esp32 tx2
-
 #include "driver/uart.h"
 #include "esp_log.h"
-#include <stdio.h>
-#include <string.h>
 
-static const char *TAG = "GPS_DRV";
+#define UART_4G_NUM     UART_NUM_1
+#define PIN_4G_TX       25
+#define PIN_4G_RX       26
+#define BUF_SIZE        2048
 
-// GPS 初始化函数
-void gps_init(int MY_PIN_GPS_TX, int MY_PIN_GPS_RX, int MY_GPS_UART_NUM,
-              int MY_GPS_BAUD_RATE, int MY_BUF_SIZE) {
-  uart_config_t uart_config = {
-      .baud_rate = MY_GPS_BAUD_RATE,
-      .data_bits = UART_DATA_8_BITS,
-      .parity = UART_PARITY_DISABLE,
-      .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-      .source_clk = UART_SCLK_DEFAULT,
-  };
+static const char *TAG = "ML307R_DEBUG";
 
-  ESP_ERROR_CHECK(
-      uart_driver_install(MY_GPS_UART_NUM, MY_BUF_SIZE * 2, 0, 0, NULL, 0));
-  ESP_ERROR_CHECK(uart_param_config(MY_GPS_UART_NUM, &uart_config));
-  ESP_ERROR_CHECK(uart_set_pin(MY_GPS_UART_NUM, MY_PIN_GPS_TX, MY_PIN_GPS_RX,
-                               UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-
-  ESP_LOGI(TAG, "GPS UART initialized.");
-}
-
-// 发送指令函数
-void gps_send_cmd(const char *cmd) {
-  uart_write_bytes(GPS_UART_NUM, cmd, strlen(cmd));
-  uart_write_bytes(GPS_UART_NUM, "\r\n", 2);
-}
-
-// 进入休眠模式 (PMTK 指令)
-void gps_enter_sleep(void) {
-  // PMTK161: Standby Mode (进入待机)
-  // 模块收到此指令后会停止输出数据并进入低功耗，直到下次收到串口数据唤醒
-  const char *sleep_cmd = "$PMTK161,0*28";
-  gps_send_cmd(sleep_cmd);
-  ESP_LOGI(TAG, "GPS sleep command sent.");
-}
-
-void gps_app_main(void) {
-  // 1. 配置 UART
-  //   uart_config_t uart_config = {
-  //     .baud_rate = GPS_BAUD_RATE,
-  //     .data_bits = UART_DATA_8_BITS,
-  //     .parity    = UART_PARITY_DISABLE,
-  //     .stop_bits = UART_STOP_BITS_1,
-  //     .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-  //     .source_clk = UART_SCLK_DEFAULT,
-  // };
-  //
-  //   // 2. 安装驱动
-  //   ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, 0, 0,
-  //   NULL, 0)); ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM,
-  //   &uart_config)); ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, PIN_GPS_TX,
-  //   PIN_GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-
-  gps_init(PIN_GPS_TX, PIN_GPS_RX, GPS_UART_NUM, GPS_BAUD_RATE, BUF_SIZE);
-
-  ESP_LOGI(TAG, "GPS UART initialized. Baudrate: %d", GPS_BAUD_RATE);
-
-  // 3. 循环读取并打印
-  uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
-
-  while (1) {
-    // 读取串口数据，超时设置为 100ms
-    int len =
-        uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
-    if (len > 0) {
-      data[len] = '\0'; // 结束符
-      // 直接透传到 ESP32 自带的调试串口 (通常是 USB 虚拟串口或 UART0)
-      printf("%s", (char *)data);
-    }
-
-  }
-  free(data);
+// 包装发送函数，强制把发送的内容镜像打印到电脑串口
+void at_send_debug(const char *cmd) {
+    printf("\n[TX] ---> %s\n", cmd);
+    fflush(stdout);
+    uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
+    uart_write_bytes(UART_4G_NUM, "\r\n", 2);
 }
 
 void app_main(void) {
-  gps_app_main();
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+    };
+    uart_driver_install(UART_4G_NUM, BUF_SIZE, 0, 0, NULL, 0);
+    uart_param_config(UART_4G_NUM, &uart_config);
+    uart_set_pin(UART_4G_NUM, PIN_4G_TX, PIN_4G_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
+    uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
+
+    // 1. 深度等待上电
+    ESP_LOGI(TAG, "Waiting 8 seconds for ML307R to boot and attach network...");
+    vTaskDelay(pdMS_TO_TICKS(8000));
+
+    // 2. 基础通信测试
+    at_send_debug("AT");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // 3. 检查 SIM 卡是否正常就绪
+    at_send_debug("AT+CPIN?");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // 4. 检查信号质量
+    at_send_debug("AT+CSQ");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // 5. 检查网络注册状态（1或5代表成功）
+    at_send_debug("AT+CGREG?");
+    vTaskDelay(pdMS_TO_TICKS(1500));
+
+    // 6. 配置移动 Cat.1 核心网 APN
+    at_send_debug("AT+CGDCONT=1,\"IP\",\"CMNET\"");
+    vTaskDelay(pdMS_TO_TICKS(1500));
+
+    // 7. 发起 HTTP 流程
+    at_send_debug("AT+HTTPINIT");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    at_send_debug("AT+HTTPPARA=\"URL\",\"http://httpbin.org/get\"");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    at_send_debug("AT+HTTPACTION=0");
+    ESP_LOGI(TAG, "HTTP GET Triggered. Waiting for modem async result...");
+    vTaskDelay(pdMS_TO_TICKS(5000)); // 留足5秒让网络传输
+
+    at_send_debug("AT+HTTPREAD");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // 8. 持续监听物理串口
+    ESP_LOGI(TAG, "Entering continuous listening mode...");
+    while (1) {
+        int len = uart_read_bytes(UART_4G_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
+        if (len > 0) {
+            data[len] = '\0';
+            // 给模块回传的数据打上标记，防止它和常规printf混淆
+            printf("[RX] <--- %s", (char *)data);
+            fflush(stdout);
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    free(data);
 }
