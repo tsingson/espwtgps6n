@@ -7,6 +7,10 @@ version.txt
 cmd/bin/
 .idea/*
 */.idea/*
+.vscode/
+.vscode/*
+.ai/
+.ai/*
 */packages
 packages/
 packages/*
