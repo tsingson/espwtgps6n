@@ -6,14 +6,33 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 
-static const char *TAG = "UBX_CONTROL";
+static const char *TAG = "UBX_PROD";
 
-#define ESP32_RX_FROM_GPS_TX (16)
-#define ESP32_TX_TO_GPS_RX   (17)
-#define GPS_UART_NUM         (UART_NUM_2)
-#define BUF_SIZE             (1024)
+// ==============================================================================
+// 1. 核心硬件与参数宏定义 (根据您的实际硬件引脚与串口进行调整)
+// ==============================================================================
+#define GPS_UART_NUM            UART_NUM_2      // 使用 ESP32 的 UART2
+#define GPS_TX_PIN              17              // ESP32 TX 引脚 (连 GPS RX)
+#define GPS_RX_PIN              16              // ESP32 RX 引脚 (连 GPS TX)
+#define BUF_SIZE                (1024)          // 串口接收缓冲区大小
 
-// UBX-NAV-PVT 结构体定义 (小端对齐，用于直接映射解析数据)
+// u-blox 协议标准同步码与类定义
+#define UBX_SYNC_CHAR_1         0xB5
+#define UBX_SYNC_CHAR_2         0x62
+#define UBX_CLASS_CFG           0x06
+#define UBX_ID_VALSET           0x8A
+
+// 配置存储目标层 (Layers)
+#define UBX_LAYER_ALL           0x07            // 同时写入 RAM, BBR 和 Flash，防掉电丢失配置
+
+// u-blox M10 配置键值 ID (Key IDs)
+#define KEY_UART1OUTPROT_UBX    0x20010021      // 端口输出协议配置
+#define KEY_RATE_MEAS           0x30210001      // 测量频率配置
+#define KEY_MSGOUT_NAV_PVT      0x20910007      // ⭐ M10 专属全局 NAV-PVT 消息主动上报控制键
+
+// ==============================================================================
+// 2. UBX-NAV-PVT 数据结构体定义 (严格 1 字节对齐，用于内存直接映射)
+// ==============================================================================
 #pragma pack(push, 1)
 typedef struct {
     uint32_t iTOW;       // GPS 毫秒时间戳
@@ -26,7 +45,7 @@ typedef struct {
     uint8_t  valid;      // 有效性标志
     uint32_t tAcc;       // 时间精度
     int32_t  nano;       // 纳秒
-    uint8_t  fixType;    // 定位类型 (0=无, 2=2D, 3=3D)
+    uint8_t  fixType;    // 定位类型 (0=无定位, 2=2D, 3=3D定位)
     uint8_t  flags;      // 导航状态标志
     uint8_t  flags2;     // 额外标志
     uint8_t  numSV;      // 参与定位的卫星数量 ⭐
@@ -39,7 +58,7 @@ typedef struct {
     int32_t  velN;       // 北向速度 (mm/s)
     int32_t  velE;       // 东向速度 (mm/s)
     int32_t  velD;       // 地向速度 (mm/s)
-    int32_t  gSpeed;     // 地速 (mm/s)
+    int32_t  gSpeed;     // 地速 (mm/s) ⭐
     int32_t  headMot;    // 运动航向角 (deg * 1e-5)
     uint32_t sAcc;       // 速度精度 (mm/s)
     uint32_t headAcc;    // 航向精度 (deg * 1e-5)
@@ -49,63 +68,13 @@ typedef struct {
 } ubx_nav_pvt_t;
 #pragma pack(pop)
 
-// 🛡️ 计算 Fletcher 校验和并填充最后两字节
-void ubx_append_checksum(uint8_t *packet, uint16_t size) {
-    uint8_t ck_a = 0, ck_b = 0;
-    // 校验和从 Class 字段开始算起，直到 Payload 结束（不含 Sync Chars 和 Checksum 本身）
-    for (uint16_t i = 2; i < size - 2; i++) {
-        ck_a += packet[i];
-        ck_b += ck_a;
-    }
-    packet[size - 2] = ck_a;
-    packet[size - 1] = ck_b;
-}
 
-void gps_configure_ubx(void) {
-    // 📦 工业级合并包：一条 VALSET 指令搞定 M10 的所有配置
-    // 包含 3 个修改项：
-    // 项 1: Key 0x20010021 (UART1 OUT) -> Value: 1 (仅 UBX)
-    // 项 2: Key 0x30210001 (MEAS RATE) -> Value: 200ms (5Hz)
-    // 项 3: Key 0x20910007 (⭐ M10 专属 NAV-PVT 全局输出开关) -> Value: 1 (开启)
-
-    uint8_t cfg_combined[] = {
-        0xB5, 0x62,             // Sync Chars
-        0x06, 0x8A,             // Class: CFG (0x06), ID: VALSET (0x8A)
-        0x14, 0x00,             // Length: 后续 Payload 共 20 字节 (小端: 0x0014)
-
-        // --- Payload 开始 (共 20 字节) ---
-        0x00,                   // Version: 0
-        0x01,                   // Layer: 1 (仅写入 RAM，断电恢复默认，安全防变砖)
-        0x00, 0x00,             // Reserved
-
-        // [项 1] 禁 NMEA，转 UBX
-        0x21, 0x00, 0x01, 0x20, // Key ID: 0x20010021
-        0x01,                   // Value: 1 (U8)
-
-        // [项 2] 飙 5Hz 高频
-        0x01, 0x00, 0x21, 0x30, // Key ID: 0x30210001
-        0xC8, 0x00,             // Value: 200 (U16, 小端: 0x00C8)
-
-        // [项 3] ⭐ 修正后的 M10 专用 NAV-PVT 订阅开关
-        0x07, 0x00, 0x91, 0x20, // Key ID: 0x20910007
-        0x01,                   // Value: 1 (U8)
-        // --- Payload 结束 ---
-
-        0x00, 0x00              // Fletcher Checksum 占位
-    };
-
-    // 重新计算并注入完整的合并包校验和
-    ubx_append_checksum(cfg_combined, sizeof(cfg_combined));
-
-    // 一口气灌入串口
-    uart_write_bytes(GPS_UART_NUM, cfg_combined, sizeof(cfg_combined));
-
-    ESP_LOGI(TAG, "M10 终极合并配置包已全量注入，静待高频二进制流唤醒...");
-}
-
+// ==============================================================================
+// 3. 基础辅助函数 (串口初始化与校验和计算)
+// ==============================================================================
 void init_gps_uart(void) {
     const uart_config_t uart_config = {
-        .baud_rate = 38400,
+        .baud_rate = 38400,                    // M10 默认黄金波特率
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
@@ -114,10 +83,72 @@ void init_gps_uart(void) {
     };
     ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM, &uart_config));
-    ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, ESP32_TX_TO_GPS_RX, ESP32_RX_FROM_GPS_TX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, GPS_TX_PIN, GPS_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 }
 
-// 🛡️ UBX 状态机解析内核
+void ubx_append_checksum(uint8_t *buffer, size_t len) {
+    if (len < 8) return;
+    uint8_t ck_a = 0, ck_b = 0;
+    // Fletcher 算法：从 Class 字节开始，累加到 Checksum 之前
+    for (size_t i = 2; i < len - 2; i++) {
+        ck_a += buffer[i];
+        ck_b += ck_a;
+    }
+    buffer[len - 2] = ck_a;
+    buffer[len - 1] = ck_b;
+}
+
+
+// ==============================================================================
+// 4. 工业级持久化配置功能 (单包多规合并注入)
+// ==============================================================================
+void gps_configure_ubx_production(void) {
+    uint8_t cfg_packet[] = {
+        UBX_SYNC_CHAR_1, UBX_SYNC_CHAR_2,
+        UBX_CLASS_CFG, UBX_ID_VALSET,
+        0x14, 0x00,             // Payload 长度: 20 字节 (小端序)
+
+        // --- Payload 开始 ---
+        0x00,                   // Version: 0
+        UBX_LAYER_ALL,          // ⭐ 全层持久化写入（RAM + BBR + Flash），断电不失忆
+        0x00, 0x00,             // 保留位占位
+
+        // [项 1] 禁 NMEA 文本，强制转为纯 UBX 二进制流模式
+        (uint8_t)(KEY_UART1OUTPROT_UBX & 0xFF), (uint8_t)((KEY_UART1OUTPROT_UBX >> 8) & 0xFF),
+        (uint8_t)((KEY_UART1OUTPROT_UBX >> 16) & 0xFF), (uint8_t)((KEY_UART1OUTPROT_UBX >> 24) & 0xFF),
+        0x01,                   // Value: 1 (纯 UBX 模式)
+
+        // [项 2] 飙 5Hz 高频定位 (测量周期 200ms)
+        (uint8_t)(KEY_RATE_MEAS & 0xFF), (uint8_t)((KEY_RATE_MEAS >> 8) & 0xFF),
+        (uint8_t)((KEY_RATE_MEAS >> 16) & 0xFF), (uint8_t)((KEY_RATE_MEAS >> 24) & 0xFF),
+        0xC8, 0x00,             // Value: 200 (U16 小端序)
+
+        // [项 3] 开启 M10 全局 NAV-PVT 消息主动高频推送
+        (uint8_t)(KEY_MSGOUT_NAV_PVT & 0xFF), (uint8_t)((KEY_MSGOUT_NAV_PVT >> 8) & 0xFF),
+        (uint8_t)((KEY_MSGOUT_NAV_PVT >> 16) & 0xFF), (uint8_t)((KEY_MSGOUT_NAV_PVT >> 24) & 0xFF),
+        0x01,                   // Value: 1 (每次测量输出一次)
+        // --- Payload 结束 ---
+
+        0x00, 0x00              // Checksum 占位 (CK_A, CK_B)
+    };
+
+    ubx_append_checksum(cfg_packet, sizeof(cfg_packet));
+
+    // 发送前清空输入缓冲区，防止残留 NMEA 文本污染后续解析
+    uart_flush_input(GPS_UART_NUM);
+
+    int bytes_written = uart_write_bytes(GPS_UART_NUM, (const char*)cfg_packet, sizeof(cfg_packet));
+    if (bytes_written != sizeof(cfg_packet)) {
+        ESP_LOGE(TAG, "UART 发送失败，缓冲区爆满！");
+        return;
+    }
+    ESP_LOGI(TAG, "M10 生产级持久化配置包已全量安全注入！");
+}
+
+
+// ==============================================================================
+// 5. UBX 二进制流状态机高可靠性解包内核
+// ==============================================================================
 void process_ubx_byte(uint8_t byte) {
     static enum { STATE_IDLE, STATE_SYNC2, STATE_CLASS, STATE_ID, STATE_LEN1, STATE_LEN2, STATE_PAYLOAD, STATE_CKA, STATE_CKB } state = STATE_IDLE;
     static uint8_t u_class, u_id;
@@ -126,17 +157,16 @@ void process_ubx_byte(uint8_t byte) {
     static uint8_t ck_a, ck_b;
     static uint8_t calc_ck_a, calc_ck_b;
 
-    // 状态机流转
     switch (state) {
         case STATE_IDLE:
-            if (byte == 0xB5) state = STATE_SYNC2;
+            if (byte == UBX_SYNC_CHAR_1) state = STATE_SYNC2;
             break;
         case STATE_SYNC2:
-            state = (byte == 0x62) ? STATE_CLASS : STATE_IDLE;
+            state = (byte == UBX_SYNC_CHAR_2) ? STATE_CLASS : STATE_IDLE;
             break;
         case STATE_CLASS:
             u_class = byte;
-            calc_ck_a = byte; calc_ck_b = byte; // 初始化校验
+            calc_ck_a = byte; calc_ck_b = byte; // 复位 Fletcher 校验
             state = STATE_ID;
             break;
         case STATE_ID:
@@ -153,6 +183,7 @@ void process_ubx_byte(uint8_t byte) {
             payload_len |= ((uint16_t)byte << 8);
             calc_ck_a += byte; calc_ck_b += calc_ck_a;
             payload_idx = 0;
+            // 长度防御性限制，防止恶意长数据包撑爆本地 RAM 缓冲区
             state = (payload_len > 0 && payload_len < sizeof(payload_buf)) ? STATE_PAYLOAD : STATE_IDLE;
             break;
         case STATE_PAYLOAD:
@@ -166,16 +197,16 @@ void process_ubx_byte(uint8_t byte) {
             break;
         case STATE_CKB:
             ck_b = byte;
-            state = STATE_IDLE; // 解析结束，重置状态
+            state = STATE_IDLE; // 本帧结束，状态机复位
 
-            // 验证校验和
+            // 严苛的端到端数据校验
             if (ck_a == calc_ck_a && ck_b == calc_ck_b) {
-                // 成功抓取到目标高频导航包：UBX-NAV-PVT (Class: 0x01, ID: 0x07)
+                // 成功捕获高频综合导航包 (Class: 0x01, ID: 0x07 -> UBX-NAV-PVT)
                 if (u_class == 0x01 && u_id == 0x07) {
                     ubx_nav_pvt_t *pvt = (ubx_nav_pvt_t *)payload_buf;
                     double lat = pvt->lat / 10000000.0;
                     double lon = pvt->lon / 10000000.0;
-                    double speed_kh = (pvt->gSpeed / 1000.0) * 3.6; // mm/s 转换为 km/h
+                    double speed_kh = (pvt->gSpeed / 1000.0) * 3.6; // 从 mm/s 换算为 km/h
 
                     printf("[UBX 5Hz 高频解算] 卫星: %d | 定位类型: %d | 纬度: %.7f | 经度: %.7f | 地速: %.2f km/h\n",
                            pvt->numSV, pvt->fixType, lat, lon, speed_kh);
@@ -185,21 +216,28 @@ void process_ubx_byte(uint8_t byte) {
     }
 }
 
+
+// ==============================================================================
+// 6. 系统任务入口与主线程
+// ==============================================================================
 void gps_ubx_task(void *pvParameters) {
     uint8_t *buffer = (uint8_t *) malloc(BUF_SIZE);
+    if (buffer == NULL) {
+        ESP_LOGE(TAG, "任务内存分配失败");
+        vTaskDelete(NULL);
+    }
 
     init_gps_uart();
-    vTaskDelay(pdMS_TO_TICKS(500)); // 等待串口驱动稳定
+    vTaskDelay(pdMS_TO_TICKS(500));              // 留出时间等待硬件和驱动层完全就绪
 
-    // 🔥 发动双向控制：改协议、飙高频
-    gps_configure_ubx();
+    gps_configure_ubx_production();              // 执行动态产品化配置
 
     while (1) {
-        // 二进制流读取必须追求低延迟，超时设为 10ms
+        // 5Hz 数据流读取要求极低的响应延迟，阻塞等待超时设为 10ms
         int len = uart_read_bytes(GPS_UART_NUM, buffer, BUF_SIZE - 1, 10 / portTICK_PERIOD_MS);
         if (len > 0) {
             for (int i = 0; i < len; i++) {
-                process_ubx_byte(buffer[i]); // 喂给二进制状态机
+                process_ubx_byte(buffer[i]);     // 字节流不间断喂给状态机解析
             }
         }
     }
@@ -207,5 +245,6 @@ void gps_ubx_task(void *pvParameters) {
 }
 
 void app_main(void) {
+    // 独立分配到核心 1 运行，使其完全脱离核心 0 的 Wi-Fi 协议栈调度，保障高频串口的高实时性
     xTaskCreatePinnedToCore(gps_ubx_task, "gps_ubx_task", 4096, NULL, 10, NULL, 1);
 }
