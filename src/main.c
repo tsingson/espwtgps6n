@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *TAG = "UBX_PROD";
+static const char *TAG = "UBX_M10";
 
 // ==============================================================================
 // 1. 核心硬件与参数宏定义 (根据您的实际硬件引脚与串口进行调整)
