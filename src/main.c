@@ -1,122 +1,95 @@
-
-#include "sdkconfig.h"
-
-#ifdef CONFIG_IDF_TARGET_ESP32
-// ESP32 经典款引脚定义
-#define PIN_I2C_SDA 21
-#define PIN_I2C_SCL 22
-#define PIN_GPS_TX 17
-#define PIN_GPS_RX 16
-#define PIN_4G_TX 25
-#define PIN_4G_RX 26
-#elif defined CONFIG_IDF_TARGET_ESP32C3
-// ESP32-C3 引脚定义
-#define PIN_I2C_SDA 4
-#define PIN_I2C_SCL 5
-#define PIN_GPS_TX 6
-#define PIN_GPS_RX 7
-#define PIN_4G_TX 18
-#define PIN_4G_RX 19
-#else
-#error "未知的目标芯片类型"
-#endif
-
-
-#include "driver/uart.h"
-#include "esp_log.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <stdio.h>
-#include <string.h>
-
-// 硬件配置
-#define GPS_UART_NUM UART_NUM_2
-#define GPS_BAUD_RATE 115200 // 9600
-#define BUF_SIZE (1024)
-// #define PIN_GPS_TX 17 // gps tx0 ---> esp32 Rx2
-// #define PIN_GPS_RX 16 // gps rx0 ----> esp32 tx2
-
 #include "driver/uart.h"
 #include "esp_log.h"
-#include <stdio.h>
-#include <string.h>
 
-static const char *TAG = "GPS_DRV";
+static const char *TAG = "GPS_APP";
 
-// GPS 初始化函数
-void gps_init(int MY_PIN_GPS_TX, int MY_PIN_GPS_RX, int MY_GPS_UART_NUM,
-              int MY_GPS_BAUD_RATE, int MY_BUF_SIZE) {
-  uart_config_t uart_config = {
-      .baud_rate = MY_GPS_BAUD_RATE,
-      .data_bits = UART_DATA_8_BITS,
-      .parity = UART_PARITY_DISABLE,
-      .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-      .source_clk = UART_SCLK_DEFAULT,
-  };
+#define ESP32_RX_FROM_GPS_TX (16)
+#define ESP32_TX_TO_GPS_RX   (17)
+#define GPS_UART_NUM         (UART_NUM_2)
+#define BUF_SIZE             (1024)
 
-  ESP_ERROR_CHECK(
-      uart_driver_install(MY_GPS_UART_NUM, MY_BUF_SIZE * 2, 0, 0, NULL, 0));
-  ESP_ERROR_CHECK(uart_param_config(MY_GPS_UART_NUM, &uart_config));
-  ESP_ERROR_CHECK(uart_set_pin(MY_GPS_UART_NUM, MY_PIN_GPS_TX, MY_PIN_GPS_RX,
-                               UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+void init_gps_uart(void) {
+    const uart_config_t uart_config = {
+        .baud_rate = 38400, // ⭐ 锁定黄金波特率 38400
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
 
-  ESP_LOGI(TAG, "GPS UART initialized.");
+    ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, ESP32_TX_TO_GPS_RX, ESP32_RX_FROM_GPS_TX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 }
 
-// 发送指令函数
-void gps_send_cmd(const char *cmd) {
-  uart_write_bytes(GPS_UART_NUM, cmd, strlen(cmd));
-  uart_write_bytes(GPS_UART_NUM, "\r\n", 2);
-}
+// 简单的 NMEA $GNGGA 语句极简解析器
+void parse_nmea_gga(char *line) {
+    // $GNGGA,时间,纬度,N/S,经度,E/W,质量(0=未定位,1=GPS,2=DGPS),卫星数,...
+    if (strncmp(line, "$GNGGA", 6) == 0 || strncmp(line, "$GPGGA", 6) == 0) {
+        char *token;
+        char *search = ",";
+        int index = 0;
 
-// 进入休眠模式 (PMTK 指令)
-void gps_enter_sleep(void) {
-  // PMTK161: Standby Mode (进入待机)
-  // 模块收到此指令后会停止输出数据并进入低功耗，直到下次收到串口数据唤醒
-  const char *sleep_cmd = "$PMTK161,0*28";
-  gps_send_cmd(sleep_cmd);
-  ESP_LOGI(TAG, "GPS sleep command sent.");
-}
+        char lat[15] = "0.0";
+        char lon[15] = "0.0";
+        char fix_status[2] = "0";
+        char sat_num[3] = "00";
 
-void gps_app_main(void) {
-  // 1. 配置 UART
-  //   uart_config_t uart_config = {
-  //     .baud_rate = GPS_BAUD_RATE,
-  //     .data_bits = UART_DATA_8_BITS,
-  //     .parity    = UART_PARITY_DISABLE,
-  //     .stop_bits = UART_STOP_BITS_1,
-  //     .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-  //     .source_clk = UART_SCLK_DEFAULT,
-  // };
-  //
-  //   // 2. 安装驱动
-  //   ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, BUF_SIZE * 2, 0, 0,
-  //   NULL, 0)); ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM,
-  //   &uart_config)); ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, PIN_GPS_TX,
-  //   PIN_GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+        token = strtok(line, search);
+        while (token != NULL) {
+            if (index == 2) strcpy(lat, token);          // 纬度
+            else if (index == 4) strcpy(lon, token);     // 经度
+            else if (index == 6) strcpy(fix_status, token); // 定位状态
+            else if (index == 7) strcpy(sat_num, token); // 卫星数量
 
-  gps_init(PIN_GPS_TX, PIN_GPS_RX, GPS_UART_NUM, GPS_BAUD_RATE, BUF_SIZE);
+            token = strtok(NULL, search);
+            index++;
+        }
 
-  ESP_LOGI(TAG, "GPS UART initialized. Baudrate: %d", GPS_BAUD_RATE);
-
-  // 3. 循环读取并打印
-  uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
-
-  while (1) {
-    // 读取串口数据，超时设置为 100ms
-    int len =
-        uart_read_bytes(GPS_UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
-    if (len > 0) {
-      data[len] = '\0'; // 结束符
-      // 直接透传到 ESP32 自带的调试串口 (通常是 USB 虚拟串口或 UART0)
-      printf("%s", (char *)data);
+        if (fix_status[0] == '0') {
+            printf("[GPS 状态] ❌ 未定位 | 正在搜星... | 当前可见卫星数: %s\n", sat_num);
+        } else {
+            printf("[GPS 状态]  已定位! | 纬度: %s | 经度: %s | 参与定位卫星数: %s\n", lat, lon, sat_num);
+        }
     }
+}
 
-  }
-  free(data);
+void gps_process_task(void *pvParameters) {
+    uint8_t *buffer = (uint8_t *) malloc(BUF_SIZE);
+    char line_buf[128];
+    int line_idx = 0;
+
+    init_gps_uart();
+    ESP_LOGI(TAG, "GPS 业务解析驱动已就绪 (38400 bps).");
+
+    while (1) {
+        int len = uart_read_bytes(GPS_UART_NUM, buffer, BUF_SIZE - 1, 20 / portTICK_PERIOD_MS);
+        if (len > 0) {
+            for (int i = 0; i < len; i++) {
+                char c = buffer[i];
+                if (c == '\n' || c == '\r') {
+                    if (line_idx > 0) {
+                        line_buf[line_idx] = '\0';
+                        parse_nmea_gga(line_buf); // 解析一行完整的 NMEA
+                        line_idx = 0;
+                    }
+                } else {
+                    if (line_idx < sizeof(line_buf) - 1) {
+                        line_buf[line_idx++] = c;
+                    }
+                }
+            }
+        }
+    }
+    free(buffer);
 }
 
 void app_main(void) {
-  gps_app_main();
+    xTaskCreatePinnedToCore(gps_process_task, "gps_process_task", 4096, NULL, 10, NULL, 1);
 }
