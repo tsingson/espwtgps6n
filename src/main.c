@@ -1,7 +1,6 @@
 //
 // Created by tsingson on 2026/6/26.
 //
-
 #include "sdkconfig.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
@@ -12,6 +11,7 @@
 #define PIN_GPS_RX 16
 #define PIN_4G_TX 25
 #define PIN_4G_RX 26
+
 #elif defined CONFIG_IDF_TARGET_ESP32C3
 // ESP32-C3 引脚定义
 #define PIN_I2C_SDA 4
@@ -20,9 +20,21 @@
 #define PIN_GPS_RX 7
 #define PIN_4G_TX 18
 #define PIN_4G_RX 19
+
+#elif defined CONFIG_IDF_TARGET_ESP32C6
+// ESP32-C6 引脚定义 (针对标准 DevKitC 进行工业级优化)
+#define PIN_I2C_SDA 6   // LP_I2C / Generic I2C SDA 可复用引脚
+#define PIN_I2C_SCL 7   // LP_I2C / Generic I2C SCL 可复用引脚
+#define PIN_GPS_TX  16  // UART1 TX for GPS Stream
+#define PIN_GPS_RX  17  // UART1 RX for GPS Stream
+#define PIN_4G_TX   20  // UART2 TX / High-speed peripheral for 4G module
+#define PIN_4G_RX   21  // UART2 RX / High-speed peripheral for 4G module
+
 #else
 #error "未知的目标芯片类型"
 #endif
+
+
 
 #include "driver/uart.h"
 #include "esp_log.h"
