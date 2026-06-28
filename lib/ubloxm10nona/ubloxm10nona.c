@@ -144,6 +144,8 @@ void process_ubx_nona_byte(uint8_t byte) {
     STATE_CKA,
     STATE_CKB
   } state = STATE_IDLE;
+
+
   static uint8_t u_class, u_id;
   static uint16_t payload_len, payload_idx;
   static uint8_t payload_buf[256];
