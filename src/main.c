@@ -1,3 +1,30 @@
+//
+// Created by tsingson on 2026/6/26.
+//
+
+#include "sdkconfig.h"
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+// ESP32 经典款引脚定义
+#define PIN_I2C_SDA 21
+#define PIN_I2C_SCL 22
+#define PIN_GPS_TX 17
+#define PIN_GPS_RX 16
+#define PIN_4G_TX 25
+#define PIN_4G_RX 26
+#elif defined CONFIG_IDF_TARGET_ESP32C3
+// ESP32-C3 引脚定义
+#define PIN_I2C_SDA 4
+#define PIN_I2C_SCL 5
+#define PIN_GPS_TX 6
+#define PIN_GPS_RX 7
+#define PIN_4G_TX 18
+#define PIN_4G_RX 19
+#else
+#error "未知的目标芯片类型"
+#endif
+
+#include "ubloxm10nona.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -5,9 +32,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ubloxm10nona.h"
-
-
 
 // ==============================================================================
 // 6. 系统任务入口与主线程

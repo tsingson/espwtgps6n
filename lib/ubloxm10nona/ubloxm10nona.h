@@ -22,10 +22,10 @@ static const char *TAG = "UBLOX_M10";
 // 1. 核心硬件与参数宏定义 (根据您的实际硬件引脚与串口进行调整)
 // ==============================================================================
 #define GPS_UART_NUM UART_NUM_2 // 使用 ESP32 的 UART2
-#define GPS_NONA_TX_PIN 17           // ESP32 TX 引脚 (连 GPS RX)
-#define GPS_NONA_RX_PIN 16           // ESP32 RX 引脚 (连 GPS TX)
-#define NONA_BUF_SIZE (1024)         // 串口接收缓冲区大小
-#define GPS_UBX_RATE 38400          // TTL 频率
+#define GPS_NONA_TX_PIN 17      // ESP32 TX 引脚 (连 GPS RX)
+#define GPS_NONA_RX_PIN 16      // ESP32 RX 引脚 (连 GPS TX)
+#define NONA_BUF_SIZE (1024)    // 串口接收缓冲区大小
+#define GPS_UBX_RATE 38400      // TTL 频率
 
 // u-blox 协议标准同步码与类定义
 #define UBX_SYNC_CHAR_1 0xB5

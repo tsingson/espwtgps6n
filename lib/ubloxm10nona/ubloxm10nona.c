@@ -38,6 +38,14 @@ typedef struct {
 } ubx_nav_pvt_t;
 #pragma pack(pop)
 
+typedef struct {
+  uint8_t fixType; // 定位类型 (0=无定位, 2=2D, 3=3D定位)
+  uint8_t numSV;   // 参与定位的卫星数量 ⭐
+  int32_t lon;     // 经度 (缩放比例 1e-7) ⭐
+  int32_t lat;     // 纬度 (缩放比例 1e-7) ⭐
+  int32_t gSpeed;  // 地速 (mm/s) ⭐
+} gps_location_t;
+
 // ==============================================================================
 // 3. 基础辅助函数 (串口初始化与校验和计算)
 // ==============================================================================
@@ -50,8 +58,8 @@ void init_ubx_nona_gps_uart(void) {
       .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
       .source_clk = UART_SCLK_DEFAULT,
   };
-  ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, NONA_BUF_SIZE * 2, NONA_BUF_SIZE * 2,
-                                      0, NULL, 0));
+  ESP_ERROR_CHECK(uart_driver_install(GPS_UART_NUM, NONA_BUF_SIZE * 2,
+                                      NONA_BUF_SIZE * 2, 0, NULL, 0));
   ESP_ERROR_CHECK(uart_param_config(GPS_UART_NUM, &uart_config));
   ESP_ERROR_CHECK(uart_set_pin(GPS_UART_NUM, GPS_NONA_TX_PIN, GPS_NONA_RX_PIN,
                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));

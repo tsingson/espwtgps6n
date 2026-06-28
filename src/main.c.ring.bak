@@ -1,0 +1,73 @@
+#include "gps_ring_buffer.h"
+
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <string.h>
+
+static const char *TAG = "GPS_RB";
+/* ================= 5. ESP-IDF / FreeRTOS Tasks ================= */
+
+// Producer Task: Simulated GPS high-frequency generation stream every 50ms
+void vProducerTask(void *pvParameters) {
+  gps_location_t fake_gps;
+  uint32_t counter = 0;
+
+  while (1) {
+    counter++;
+    fake_gps.fixType = 3;
+    fake_gps.numSV = (uint8_t)(counter % 12 + 4);
+    fake_gps.lat = 31000000 + (int32_t)counter; // incremental data injection
+    fake_gps.lon = 12100000 + (int32_t)counter;
+    fake_gps.gSpeed = 2000 + (int32_t)counter;
+
+    gps_rb_push_overwrite(&fake_gps);
+
+    ESP_LOGI(TAG, "[PRODUCER] Generated ID:%lu | Lat:%ld | Unread in Buf:%lu",
+             (unsigned long)counter, (long)fake_gps.lat,
+             (unsigned long)gps_rb_get_unread_count());
+
+    vTaskDelay(pdMS_TO_TICKS(50)); // Generate data every 50ms
+  }
+}
+
+// Consumer Task: Simulates disappearing for 2s, then catches up aggressively
+void vConsumerTask(void *pvParameters) {
+  gps_location_t received_data;
+
+  ESP_LOGW(TAG, "[CONSUMER] Simulating Disconnected Status (Sleep 2s)...");
+  vTaskDelay(pdMS_TO_TICKS(2000)); // 2-second sleep forces buffer overruns
+  ESP_LOGI(TAG, "[CONSUMER] Now Online! Starting to consume data...");
+
+  while (1) {
+    if (gps_rb_pop(&received_data) == pdTRUE) {
+      ESP_LOGE(
+          TAG,
+          "    -> [CONSUMER] Pop Success! Lat:%ld | SVs:%u | Remaining:%lu",
+          (long)received_data.lat, (unsigned int)received_data.numSV,
+          (unsigned long)gps_rb_get_unread_count());
+
+      // Fast loop handling interval when resolving backlogged elements
+      vTaskDelay(pdMS_TO_TICKS(10));
+    } else {
+      // Buffer empty, catch-up achieved, enter relaxed polling mode
+      ESP_LOGW(
+          TAG,
+          "    -> [CONSUMER] Buffer fully cleared. Waiting for new data...");
+      vTaskDelay(pdMS_TO_TICKS(200));
+    }
+  }
+}
+
+/* ================= 6. ESP-IDF Application Entry Point ================= */
+void app_main(void) {
+  vTaskDelay(pdMS_TO_TICKS(200));
+  // Note: In ESP-IDF, tasks are created on a dual-core architecture.
+  // For absolute lock-free single-producer single-consumer safety without CPU
+  // core migration quirks, you can pin them to the same CPU core using
+  // xTaskCreatePinnedToCore if desired. Here we use standard xTaskCreate, which
+  // is safe due to the hardware-level "memw" barrier.
+
+  xTaskCreate(vProducerTask, "ProducerTask", 3072, NULL, 5, NULL);
+  xTaskCreate(vConsumerTask, "ConsumerTask", 3072, NULL, 4, NULL);
+}
