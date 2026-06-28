@@ -1,50 +1,5 @@
 #include "ubloxm10nona.h"
 
-// ==============================================================================
-// 2. UBX-NAV-PVT 数据结构体定义 (严格 1 字节对齐，用于内存直接映射)
-// ==============================================================================
-#pragma pack(push, 1)
-typedef struct {
-  uint32_t iTOW;    // GPS 毫秒时间戳
-  uint16_t year;    // 年
-  uint8_t month;    // 月
-  uint8_t day;      // 日
-  uint8_t hour;     // 时
-  uint8_t min;      // 分
-  uint8_t sec;      // 秒
-  uint8_t valid;    // 有效性标志
-  uint32_t tAcc;    // 时间精度
-  int32_t nano;     // 纳秒
-  uint8_t fixType;  // 定位类型 (0=无定位, 2=2D, 3=3D定位)
-  uint8_t flags;    // 导航状态标志
-  uint8_t flags2;   // 额外标志
-  uint8_t numSV;    // 参与定位的卫星数量 ⭐
-  int32_t lon;      // 经度 (缩放比例 1e-7) ⭐
-  int32_t lat;      // 纬度 (缩放比例 1e-7) ⭐
-  int32_t height;   // 椭球高 (mm)
-  int32_t hMSL;     // 海拔高度 (mm)
-  uint32_t hAcc;    // 水平精度 (mm)
-  uint32_t vAcc;    // 垂直精度 (mm)
-  int32_t velN;     // 北向速度 (mm/s)
-  int32_t velE;     // 东向速度 (mm/s)
-  int32_t velD;     // 地向速度 (mm/s)
-  int32_t gSpeed;   // 地速 (mm/s) ⭐
-  int32_t headMot;  // 运动航向角 (deg * 1e-5)
-  uint32_t sAcc;    // 速度精度 (mm/s)
-  uint32_t headAcc; // 航向精度 (deg * 1e-5)
-  uint16_t pDOP;    // 位置位置因子 (0.01)
-  uint8_t flags3;   // 额外标志3
-  uint8_t reserved1[5];
-} ubx_nav_pvt_t;
-#pragma pack(pop)
-
-typedef struct {
-  uint8_t fixType; // 定位类型 (0=无定位, 2=2D, 3=3D定位)
-  uint8_t numSV;   // 参与定位的卫星数量 ⭐
-  int32_t lon;     // 经度 (缩放比例 1e-7) ⭐
-  int32_t lat;     // 纬度 (缩放比例 1e-7) ⭐
-  int32_t gSpeed;  // 地速 (mm/s) ⭐
-} gps_location_t;
 
 // ==============================================================================
 // 3. 基础辅助函数 (串口初始化与校验和计算)

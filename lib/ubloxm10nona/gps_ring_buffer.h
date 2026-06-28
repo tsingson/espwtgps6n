@@ -21,7 +21,6 @@
  */
 #define REQ_CAPACITY 16
 #define BUFFER_SIZE (REQ_CAPACITY + 1)
-
 /* 2. Core GPS Data Structure */
 typedef struct {
   uint8_t fixType; // Fix Type (0=No Fix, 2=2D, 3=3D Fix)
@@ -30,6 +29,7 @@ typedef struct {
   int32_t lat;     // Latitude (scaled by 1e-7)
   int32_t gSpeed;  // Ground Speed (mm/s)
 } gps_location_t;
+
 
 /* 3. Static Lock-Free Ring Buffer Structure */
 typedef struct {

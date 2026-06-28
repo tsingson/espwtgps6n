@@ -28,12 +28,146 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gps_ring_buffer.h"
 #include "oled_ssd1306.h"
 #include "ubloxm10nona.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+// ==============================================================================
+// 6. 系统任务入口与主线程
+// ==============================================================================
+void process_ubx_nona_byte_ring(uint8_t byte) {
+  gps_location_t fake_gps;
+
+  static enum {
+    STATE_IDLE,
+    STATE_SYNC2,
+    STATE_CLASS,
+    STATE_ID,
+    STATE_LEN1,
+    STATE_LEN2,
+    STATE_PAYLOAD,
+    STATE_CKA,
+    STATE_CKB
+  } state = STATE_IDLE;
+
+  static uint8_t u_class, u_id;
+  static uint16_t payload_len, payload_idx;
+  static uint8_t payload_buf[256];
+  static uint8_t ck_a, ck_b;
+  static uint8_t calc_ck_a, calc_ck_b;
+
+  switch (state) {
+  case STATE_IDLE:
+    if (byte == UBX_SYNC_CHAR_1)
+      state = STATE_SYNC2;
+    break;
+  case STATE_SYNC2:
+    state = (byte == UBX_SYNC_CHAR_2) ? STATE_CLASS : STATE_IDLE;
+    break;
+  case STATE_CLASS:
+    u_class = byte;
+    calc_ck_a = byte;
+    calc_ck_b = byte; // 复位 Fletcher 校验
+    state = STATE_ID;
+    break;
+  case STATE_ID:
+    u_id = byte;
+    calc_ck_a += byte;
+    calc_ck_b += calc_ck_a;
+    state = STATE_LEN1;
+    break;
+  case STATE_LEN1:
+    payload_len = byte;
+    calc_ck_a += byte;
+    calc_ck_b += calc_ck_a;
+    state = STATE_LEN2;
+    break;
+  case STATE_LEN2:
+    payload_len |= ((uint16_t)byte << 8);
+    calc_ck_a += byte;
+    calc_ck_b += calc_ck_a;
+    payload_idx = 0;
+    // 长度防御性限制，防止恶意长数据包撑爆本地 RAM 缓冲区
+    state = (payload_len > 0 && payload_len < sizeof(payload_buf))
+                ? STATE_PAYLOAD
+                : STATE_IDLE;
+    break;
+  case STATE_PAYLOAD:
+    payload_buf[payload_idx++] = byte;
+    calc_ck_a += byte;
+    calc_ck_b += calc_ck_a;
+    if (payload_idx >= payload_len)
+      state = STATE_CKA;
+    break;
+  case STATE_CKA:
+    ck_a = byte;
+    state = STATE_CKB;
+    break;
+  case STATE_CKB:
+    ck_b = byte;
+    state = STATE_IDLE; // 本帧结束，状态机复位
+
+    // 严苛的端到端数据校验
+    if (ck_a == calc_ck_a && ck_b == calc_ck_b) {
+      // 成功捕获高频综合导航包 (Class: 0x01, ID: 0x07 -> UBX-NAV-PVT)
+      if (u_class == 0x01 && u_id == 0x07) {
+        ubx_nav_pvt_t *pvt = (ubx_nav_pvt_t *)payload_buf;
+
+        fake_gps.fixType = pvt->fixType;
+        fake_gps.numSV = pvt->numSV;
+        fake_gps.lat = pvt->lat;
+        fake_gps.lon = pvt->lon;
+        fake_gps.gSpeed = pvt->gSpeed;
+
+        gps_rb_push_overwrite(&fake_gps);
+      }
+    }
+    break;
+  }
+}
+// ==============================================================================
+//
+// ==============================================================================
+
+// Consumer Task: Simulates disappearing for 2s, then catches up aggressively
+void vConsumerTask(void *pvParameters) {
+  gps_location_t received_data;
+
+  ESP_LOGW(TAG, "[CONSUMER] Simulating Disconnected Status (Sleep 2s)...");
+  vTaskDelay(pdMS_TO_TICKS(2000)); // 2-second sleep forces buffer overruns
+  ESP_LOGI(TAG, "[CONSUMER] Now Online! Starting to consume data...");
+
+  while (1) {
+    if (gps_rb_pop(&received_data) == pdTRUE) {
+      // ESP_LOGE(
+      //     TAG,
+      //     "    -> [CONSUMER] Pop Success! Lat:%ld | SVs:%u | Remaining:%lu",
+      //     (long)received_data.lat, (unsigned int)received_data.numSV,
+      //     (unsigned long)gps_rb_get_unread_count());
+
+      double lat = received_data.lat / 10000000.0;
+      double lon = received_data.lon / 10000000.0;
+      double speed_kh =
+          (received_data.gSpeed / 1000.0) * 3.6; // 从 mm/s 换算为 km/h
+
+      printf("[UBX 5Hz 高频解算] 卫星: %d | 定位类型: %d | 纬度: %.7f | "
+             "经度: %.7f | 地速: %.2f km/h\n",
+             received_data.numSV, received_data.fixType, lat, lon, speed_kh);
+
+      // Fast loop handling interval when resolving backlogged elements
+      vTaskDelay(pdMS_TO_TICKS(1));
+    } else {
+      // Buffer empty, catch-up achieved, enter relaxed polling mode
+      ESP_LOGW(
+          TAG,
+          "    -> [CONSUMER] Buffer fully cleared. Waiting for new data...");
+      vTaskDelay(pdMS_TO_TICKS(200));
+    }
+  }
+}
 // ==============================================================================
 // 6. 系统任务入口与主线程
 // ==============================================================================
@@ -55,7 +189,8 @@ void gps_ubx_task(void *pvParameters) {
                               10 / portTICK_PERIOD_MS);
     if (len > 0) {
       for (int i = 0; i < len; i++) {
-        process_ubx_nona_byte(buffer[i]); // 字节流不间断喂给状态机解析
+        //     process_ubx_nona_byte(buffer[i]); // 字节流不间断喂给状态机解析
+        process_ubx_nona_byte_ring(buffer[i]); // 字节流不间断喂给状态机解析
       }
     }
   }
@@ -82,4 +217,5 @@ void app_main(void) {
   // 协议栈调度，保障高频串口的高实时性
   xTaskCreatePinnedToCore(gps_ubx_task, "gps_ubx_task", 4096, NULL, 10, NULL,
                           1);
+  xTaskCreate(vConsumerTask, "ConsumerTask", 3072, NULL, 4, NULL);
 }
