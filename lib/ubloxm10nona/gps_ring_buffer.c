@@ -81,24 +81,3 @@ uint32_t gps_rb_get_unread_count(void) {
     return BUFFER_SIZE - (t - h);
   }
 }
-
-/**
- * @brief Safely instantly Flushes/Resets the ring buffer.
- * @note  Thread-safe and lock-free. It catches up the tail to the head,
- *        making the buffer appear empty instantly to the consumer.
- */
-void gps_rb_flush(void) {
-  // Take a snapshot of the current head position.
-  // Even if the producer increments head on another core during this function,
-  // we safely snap the tail to the snapshot point, ensuring data integrity.
-  uint32_t current_head = gps_rb.head;
-
-  // Enforce execution order barrier
-  asm volatile ("memw" : : : "memory");
-
-  // Moving the tail to match the head instantly drops all unread elements
-  gps_rb.tail = current_head;
-
-  asm volatile ("memw" : : : "memory");
-  ESP_LOGW(TAG, "!!! BUFFER FLUSHED INSTANTLY !!!");
-}

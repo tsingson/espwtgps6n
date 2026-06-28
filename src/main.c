@@ -24,11 +24,12 @@
 #error "未知的目标芯片类型"
 #endif
 
-#include "ubloxm10nona.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "oled_ssd1306.h"
+#include "ubloxm10nona.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,21 @@ void gps_ubx_task(void *pvParameters) {
 }
 
 void app_main(void) {
+  vTaskDelay(pdMS_TO_TICKS(200));
+
+  if (oled_init(PIN_I2C_SCL, PIN_I2C_SDA) != ESP_OK) {
+    ESP_LOGE(TAG, "OLED Core Engine Init Failed!");
+    return;
+  }
+  {
+    oled_clear();
+    oled_show_string_ex(0, 0, "GPS ublox m10 nona", 1);
+    oled_show_string_ex(0, 20, "Buffering data...", 0);
+
+    oled_refresh();
+
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
   // 独立分配到核心 1 运行，使其完全脱离核心 0 的 Wi-Fi
   // 协议栈调度，保障高频串口的高实时性
   xTaskCreatePinnedToCore(gps_ubx_task, "gps_ubx_task", 4096, NULL, 10, NULL,
