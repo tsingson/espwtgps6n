@@ -1,5 +1,8 @@
 #include "gps_ring_buffer.h"
 
+// Instantiate the global static ring buffer
+static gps_spsc_ring_buffer_t gps_rb = {.head = 0, .tail = 0};
+
 /* ================= 4. Lock-Free SPSC Core Functions ================= */
 
 /**

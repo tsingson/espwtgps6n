@@ -38,8 +38,7 @@ typedef struct {
   volatile uint32_t tail;
 } gps_spsc_ring_buffer_t;
 
-// Instantiate the global static ring buffer
-static gps_spsc_ring_buffer_t gps_rb = {.head = 0, .tail = 0};
+
 
 void gps_rb_push_overwrite(const gps_location_t *new_data);
 BaseType_t gps_rb_pop(gps_location_t *out_data);

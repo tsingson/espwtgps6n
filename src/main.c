@@ -136,6 +136,14 @@ void process_ubx_nona_byte_ring(uint8_t byte) {
 void vConsumerTask(void *pvParameters) {
   gps_location_t received_data;
 
+  char star[32] = {0};
+  char tp[32] = {0};
+  char latt[32] = {0};
+
+  char lonn[32] = {0};
+  char spt[32] = {0};
+  //
+
   ESP_LOGW(TAG, "[CONSUMER] Simulating Disconnected Status (Sleep 2s)...");
   vTaskDelay(pdMS_TO_TICKS(2000)); // 2-second sleep forces buffer overruns
   ESP_LOGI(TAG, "[CONSUMER] Now Online! Starting to consume data...");
@@ -157,9 +165,29 @@ void vConsumerTask(void *pvParameters) {
              "经度: %.7f | 地速: %.2f km/h\n",
              received_data.numSV, received_data.fixType, lat, lon, speed_kh);
 
+      oled_clear();
+
+      snprintf(star, sizeof(star), "star:%d", received_data.numSV);
+      oled_show_string_wrap(0, 0, star);
+
+      snprintf(tp, sizeof(tp), "type:%d", received_data.fixType);
+      oled_show_string_wrap(0, 12, tp);
+
+      snprintf(latt, sizeof(latt), "lat:%.7f", lat);
+      oled_show_string_wrap(0, 24, latt);
+
+      snprintf(lonn, sizeof(lonn), "kib:%.7f", lon);
+      oled_show_string_wrap(0, 36, lonn);
+
+      snprintf(spt, sizeof(spt), "soeed:%.3f km/h", speed_kh);
+      oled_show_string_wrap(0, 48, spt);
+
+      oled_refresh();
+
       // Fast loop handling interval when resolving backlogged elements
       vTaskDelay(pdMS_TO_TICKS(1));
     } else {
+      oled_clear();
       // Buffer empty, catch-up achieved, enter relaxed polling mode
       ESP_LOGW(
           TAG,
@@ -168,6 +196,9 @@ void vConsumerTask(void *pvParameters) {
     }
   }
 }
+
+//
+
 // ==============================================================================
 // 6. 系统任务入口与主线程
 // ==============================================================================
