@@ -71,8 +71,8 @@ void app_main(void) {
   }
   {
     oled_clear();
-    oled_show_string_ex(0, 0, "GPS ublox m10 nona", 1);
-    oled_show_string_ex(0, 20, "Buffering data...", 0);
+    oled_show_string_ex(0, 0, "GPS ublox m10", 0);
+    oled_show_string_ex(0, 20, "initial...", 0);
 
     oled_refresh();
 
