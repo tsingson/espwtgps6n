@@ -12,3 +12,13 @@ ublox m10 nona 飞控版 GPS ( 自带天线)
 ```
 
 搜星大约1到3分钟, 天线要面向上
+
+
+
+esp32-c3 suppermini 
+
+![esp32-c3 suppermini](./c3-suppermini.png)
+
+
+esp32-c6 beetle
+![esp32-c6 beetle](./c6.png)
