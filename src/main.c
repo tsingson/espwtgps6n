@@ -168,19 +168,19 @@ void vConsumerTask(void *pvParameters) {
       oled_clear();
 
       snprintf(star, sizeof(star), "star:%d", received_data.numSV);
-      oled_show_string_wrap(0, 0, star);
+      oled_show_string(0, 0, star);
 
       snprintf(tp, sizeof(tp), "type:%d", received_data.fixType);
-      oled_show_string_wrap(0, 12, tp);
+      oled_show_string(0, 13, tp);
 
       snprintf(latt, sizeof(latt), "lat:%.7f", lat);
-      oled_show_string_wrap(0, 24, latt);
+      oled_show_string(0, 26, latt);
 
       snprintf(lonn, sizeof(lonn), "kib:%.7f", lon);
-      oled_show_string_wrap(0, 36, lonn);
+      oled_show_string(0, 39, lonn);
 
       snprintf(spt, sizeof(spt), "soeed:%.3f km/h", speed_kh);
-      oled_show_string_wrap(0, 48, spt);
+      oled_show_string(0, 52, spt);
 
       oled_refresh();
 
