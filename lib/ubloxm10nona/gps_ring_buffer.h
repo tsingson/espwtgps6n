@@ -30,15 +30,12 @@ typedef struct {
   int32_t gSpeed;  // Ground Speed (mm/s)
 } gps_location_t;
 
-
 /* 3. Static Lock-Free Ring Buffer Structure */
 typedef struct {
   gps_location_t buffer[BUFFER_SIZE];
   volatile uint32_t head; // volatile enforces memory read/write cycles
   volatile uint32_t tail;
 } gps_spsc_ring_buffer_t;
-
-
 
 void gps_rb_push_overwrite(const gps_location_t *new_data);
 BaseType_t gps_rb_pop(gps_location_t *out_data);

@@ -2,8 +2,6 @@
 // 替换前类似这样：
 // __asm__ __volatile__("memw");
 
-
-
 // This variable is restricted to this file via 'static'
 static gps_parser_state_t current_state = GPS_STATE_IDLE;
 

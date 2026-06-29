@@ -64,7 +64,6 @@ BaseType_t gps_rb_pop(gps_location_t *out_data) {
   // 2. Memory Barrier for data ordering security
   // asm volatile("memw" : : : "memory");
 
-
   // 3. Shift tail index to open up space slot
   gps_rb.tail = (current_tail + 1) % BUFFER_SIZE;
 
