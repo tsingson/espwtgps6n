@@ -11,6 +11,8 @@
 #define PIN_GPS_RX 16
 #define PIN_4G_TX 25
 #define PIN_4G_RX 26
+//
+#define tskNO_AFFINITY 1
 
 #elif defined CONFIG_IDF_TARGET_ESP32C3
 // ESP32-C3 引脚定义
@@ -20,6 +22,8 @@
 #define PIN_GPS_RX 7
 #define PIN_4G_TX 18
 #define PIN_4G_RX 19
+//
+#define tskNO_AFFINITY 0
 
 #elif defined CONFIG_IDF_TARGET_ESP32C6
 // ESP32-C6 引脚定义 (针对标准 DevKitC 进行工业级优化)
@@ -29,6 +33,8 @@
 #define PIN_GPS_RX 17 // UART1 RX for GPS Stream
 #define PIN_4G_TX 20  // UART2 TX / High-speed peripheral for 4G module
 #define PIN_4G_RX 21  // UART2 RX / High-speed peripheral for 4G module
+//
+#define tskNO_AFFINITY 0
 
 #else
 #error "未知的目标芯片类型"
@@ -258,6 +264,6 @@ void app_main(void) {
   // 独立分配到核心 1 运行，使其完全脱离核心 0 的 Wi-Fi
   // 协议栈调度，保障高频串口的高实时性
   xTaskCreatePinnedToCore(gps_ubx_task, "gps_ubx_task", 4096, NULL, 10, NULL,
-                          1);
+                          tskNO_AFFINITY);
   xTaskCreate(vConsumerTask, "ConsumerTask", 3072, NULL, 4, NULL);
 }
