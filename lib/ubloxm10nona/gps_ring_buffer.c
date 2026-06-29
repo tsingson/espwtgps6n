@@ -27,7 +27,7 @@ void gps_rb_push_overwrite(const gps_location_t *new_data) {
   // 2. Hardware Memory Barrier for Xtensa Architecture
   // Instructs the ESP32 CPU pipeline to flush the memcpy execution to RAM
   // BEFORE updating index variables. Prevents instruction reordering errors.
-  asm volatile("memw" : : : "memory");
+  // asm volatile("memw" : : : "memory");
 
   uint32_t next_head = (current_head + 1) % BUFFER_SIZE;
 
@@ -62,7 +62,8 @@ BaseType_t gps_rb_pop(gps_location_t *out_data) {
          sizeof(gps_location_t));
 
   // 2. Memory Barrier for data ordering security
-  asm volatile("memw" : : : "memory");
+  // asm volatile("memw" : : : "memory");
+
 
   // 3. Shift tail index to open up space slot
   gps_rb.tail = (current_tail + 1) % BUFFER_SIZE;

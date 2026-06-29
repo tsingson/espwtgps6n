@@ -7,7 +7,8 @@
 //
 // Created by tsingson on 2026/6/27.
 //
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -39,18 +40,17 @@ static const char *TAG = "UBLOX_M10";
 // u-blox M10 配置键值 ID (Key IDs)
 #define KEY_UART1OUTPROT_UBX 0x20010021 // 端口输出协议配置
 #define KEY_RATE_MEAS 0x30210001        // 测量频率配置
-#define KEY_MSGOUT_NAV_PVT                                                     \
+#define KEY_MSGOUT_NAV_PVT \
   0x20910007 // ⭐ M10 专属全局 NAV-PVT 消息主动上报控制键
 
 // typedef
-
-
 
 // ==============================================================================
 // 2. UBX-NAV-PVT 数据结构体定义 (严格 1 字节对齐，用于内存直接映射)
 // ==============================================================================
 #pragma pack(push, 1)
-typedef struct {
+typedef struct
+{
   uint32_t iTOW;    // GPS 毫秒时间戳
   uint16_t year;    // 年
   uint8_t month;    // 月
@@ -83,7 +83,6 @@ typedef struct {
   uint8_t reserved1[5];
 } ubx_nav_pvt_t;
 #pragma pack(pop)
-
 
 //
 

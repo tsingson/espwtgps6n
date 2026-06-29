@@ -23,18 +23,16 @@
 
 #elif defined CONFIG_IDF_TARGET_ESP32C6
 // ESP32-C6 引脚定义 (针对标准 DevKitC 进行工业级优化)
-#define PIN_I2C_SDA 6   // LP_I2C / Generic I2C SDA 可复用引脚
-#define PIN_I2C_SCL 7   // LP_I2C / Generic I2C SCL 可复用引脚
-#define PIN_GPS_TX  16  // UART1 TX for GPS Stream
-#define PIN_GPS_RX  17  // UART1 RX for GPS Stream
-#define PIN_4G_TX   20  // UART2 TX / High-speed peripheral for 4G module
-#define PIN_4G_RX   21  // UART2 RX / High-speed peripheral for 4G module
+#define PIN_I2C_SDA 6 // LP_I2C / Generic I2C SDA 可复用引脚
+#define PIN_I2C_SCL 7 // LP_I2C / Generic I2C SCL 可复用引脚
+#define PIN_GPS_TX 16 // UART1 TX for GPS Stream
+#define PIN_GPS_RX 17 // UART1 RX for GPS Stream
+#define PIN_4G_TX 20  // UART2 TX / High-speed peripheral for 4G module
+#define PIN_4G_RX 21  // UART2 RX / High-speed peripheral for 4G module
 
 #else
 #error "未知的目标芯片类型"
 #endif
-
-
 
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -50,7 +48,8 @@
 // ==============================================================================
 // 6. 系统任务入口与主线程
 // ==============================================================================
-void process_ubx_nona_byte_ring(uint8_t byte) {
+void process_ubx_nona_byte_ring(uint8_t byte)
+{
   gps_location_t fake_gps;
 
   static enum {
@@ -71,7 +70,8 @@ void process_ubx_nona_byte_ring(uint8_t byte) {
   static uint8_t ck_a, ck_b;
   static uint8_t calc_ck_a, calc_ck_b;
 
-  switch (state) {
+  switch (state)
+  {
   case STATE_IDLE:
     if (byte == UBX_SYNC_CHAR_1)
       state = STATE_SYNC2;
@@ -123,9 +123,11 @@ void process_ubx_nona_byte_ring(uint8_t byte) {
     state = STATE_IDLE; // 本帧结束，状态机复位
 
     // 严苛的端到端数据校验
-    if (ck_a == calc_ck_a && ck_b == calc_ck_b) {
+    if (ck_a == calc_ck_a && ck_b == calc_ck_b)
+    {
       // 成功捕获高频综合导航包 (Class: 0x01, ID: 0x07 -> UBX-NAV-PVT)
-      if (u_class == 0x01 && u_id == 0x07) {
+      if (u_class == 0x01 && u_id == 0x07)
+      {
         ubx_nav_pvt_t *pvt = (ubx_nav_pvt_t *)payload_buf;
 
         fake_gps.fixType = pvt->fixType;
@@ -140,12 +142,20 @@ void process_ubx_nona_byte_ring(uint8_t byte) {
     break;
   }
 }
+
+#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
+#define GPS_UART_NUM UART_NUM_1 // C3 和 C6 只有两个串口，使用 UART1
+#else
+#define GPS_UART_NUM UART_NUM_2 // 经典的 ESP32 继续使用 UART2
+#endif
+
 // ==============================================================================
 //
 // ==============================================================================
 
 // Consumer Task: Simulates disappearing for 2s, then catches up aggressively
-void vConsumerTask(void *pvParameters) {
+void vConsumerTask(void *pvParameters)
+{
   gps_location_t received_data;
 
   char star[32] = {0};
@@ -160,8 +170,10 @@ void vConsumerTask(void *pvParameters) {
   vTaskDelay(pdMS_TO_TICKS(2000)); // 2-second sleep forces buffer overruns
   ESP_LOGI(TAG, "[CONSUMER] Now Online! Starting to consume data...");
 
-  while (1) {
-    if (gps_rb_pop(&received_data) == pdTRUE) {
+  while (1)
+  {
+    if (gps_rb_pop(&received_data) == pdTRUE)
+    {
       // ESP_LOGE(
       //     TAG,
       //     "    -> [CONSUMER] Pop Success! Lat:%ld | SVs:%u | Remaining:%lu",
@@ -198,7 +210,9 @@ void vConsumerTask(void *pvParameters) {
 
       // Fast loop handling interval when resolving backlogged elements
       vTaskDelay(pdMS_TO_TICKS(1));
-    } else {
+    }
+    else
+    {
       oled_clear();
       // Buffer empty, catch-up achieved, enter relaxed polling mode
       ESP_LOGW(
@@ -214,9 +228,11 @@ void vConsumerTask(void *pvParameters) {
 // ==============================================================================
 // 6. 系统任务入口与主线程
 // ==============================================================================
-void gps_ubx_task(void *pvParameters) {
+void gps_ubx_task(void *pvParameters)
+{
   uint8_t *buffer = (uint8_t *)malloc(NONA_BUF_SIZE);
-  if (buffer == NULL) {
+  if (buffer == NULL)
+  {
     ESP_LOGE(TAG, "任务内存分配失败");
     vTaskDelete(NULL);
   }
@@ -226,12 +242,15 @@ void gps_ubx_task(void *pvParameters) {
 
   gps_configure_ubx_nona_proc(); // 执行动态产品化配置
 
-  while (1) {
+  while (1)
+  {
     // 5Hz 数据流读取要求极低的响应延迟，阻塞等待超时设为 10ms
     int len = uart_read_bytes(GPS_UART_NUM, buffer, NONA_BUF_SIZE - 1,
                               10 / portTICK_PERIOD_MS);
-    if (len > 0) {
-      for (int i = 0; i < len; i++) {
+    if (len > 0)
+    {
+      for (int i = 0; i < len; i++)
+      {
         //     process_ubx_nona_byte(buffer[i]); // 字节流不间断喂给状态机解析
         process_ubx_nona_byte_ring(buffer[i]); // 字节流不间断喂给状态机解析
       }
@@ -240,10 +259,12 @@ void gps_ubx_task(void *pvParameters) {
   free(buffer);
 }
 
-void app_main(void) {
+void app_main(void)
+{
   vTaskDelay(pdMS_TO_TICKS(200));
 
-  if (oled_init(PIN_I2C_SCL, PIN_I2C_SDA) != ESP_OK) {
+  if (oled_init(PIN_I2C_SCL, PIN_I2C_SDA) != ESP_OK)
+  {
     ESP_LOGE(TAG, "OLED Core Engine Init Failed!");
     return;
   }

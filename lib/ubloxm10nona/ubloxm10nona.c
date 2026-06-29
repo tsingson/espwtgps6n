@@ -1,10 +1,16 @@
 #include "ubloxm10nona.h"
 
-
+// 💡 确保包含了 C3、C6 的宏，甚至是后续可能扩充的其它 RISC-V 芯片
+#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
+#define GPS_UART_NUM UART_NUM_1
+#else
+#define GPS_UART_NUM UART_NUM_2
+#endif
 // ==============================================================================
 // 3. 基础辅助函数 (串口初始化与校验和计算)
 // ==============================================================================
-void init_ubx_nona_gps_uart(void) {
+void init_ubx_nona_gps_uart(void)
+{
   const uart_config_t uart_config = {
       .baud_rate = GPS_UBX_RATE, // M10 默认黄金波特率
       .data_bits = UART_DATA_8_BITS,
@@ -20,12 +26,14 @@ void init_ubx_nona_gps_uart(void) {
                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 }
 
-void ubx_nona_append_checksum(uint8_t *buffer, size_t len) {
+void ubx_nona_append_checksum(uint8_t *buffer, size_t len)
+{
   if (len < 8)
     return;
   uint8_t ck_a = 0, ck_b = 0;
   // Fletcher 算法：从 Class 字节开始，累加到 Checksum 之前
-  for (size_t i = 2; i < len - 2; i++) {
+  for (size_t i = 2; i < len - 2; i++)
+  {
     ck_a += buffer[i];
     ck_b += ck_a;
   }
@@ -36,7 +44,8 @@ void ubx_nona_append_checksum(uint8_t *buffer, size_t len) {
 // ==============================================================================
 // 4. 工业级持久化配置功能 (单包多规合并注入)
 // ==============================================================================
-void gps_configure_ubx_nona_proc(void) {
+void gps_configure_ubx_nona_proc(void)
+{
   uint8_t cfg_packet[] = {
       UBX_SYNC_CHAR_1, UBX_SYNC_CHAR_2, UBX_CLASS_CFG, UBX_ID_VALSET, 0x14,
       0x00, // Payload 长度: 20 字节 (小端序)
@@ -77,7 +86,8 @@ void gps_configure_ubx_nona_proc(void) {
 
   int bytes_written = uart_write_bytes(GPS_UART_NUM, (const char *)cfg_packet,
                                        sizeof(cfg_packet));
-  if (bytes_written != sizeof(cfg_packet)) {
+  if (bytes_written != sizeof(cfg_packet))
+  {
     ESP_LOGE(TAG, "UART 发送失败，缓冲区爆满！");
     return;
   }
@@ -87,7 +97,8 @@ void gps_configure_ubx_nona_proc(void) {
 // ==============================================================================
 // 5. UBX 二进制流状态机高可靠性解包内核
 // ==============================================================================
-void process_ubx_nona_byte(uint8_t byte) {
+void process_ubx_nona_byte(uint8_t byte)
+{
   static enum {
     STATE_IDLE,
     STATE_SYNC2,
@@ -106,7 +117,8 @@ void process_ubx_nona_byte(uint8_t byte) {
   static uint8_t ck_a, ck_b;
   static uint8_t calc_ck_a, calc_ck_b;
 
-  switch (state) {
+  switch (state)
+  {
   case STATE_IDLE:
     if (byte == UBX_SYNC_CHAR_1)
       state = STATE_SYNC2;
@@ -158,9 +170,11 @@ void process_ubx_nona_byte(uint8_t byte) {
     state = STATE_IDLE; // 本帧结束，状态机复位
 
     // 严苛的端到端数据校验
-    if (ck_a == calc_ck_a && ck_b == calc_ck_b) {
+    if (ck_a == calc_ck_a && ck_b == calc_ck_b)
+    {
       // 成功捕获高频综合导航包 (Class: 0x01, ID: 0x07 -> UBX-NAV-PVT)
-      if (u_class == 0x01 && u_id == 0x07) {
+      if (u_class == 0x01 && u_id == 0x07)
+      {
         ubx_nav_pvt_t *pvt = (ubx_nav_pvt_t *)payload_buf;
         double lat = pvt->lat / 10000000.0;
         double lon = pvt->lon / 10000000.0;

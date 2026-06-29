@@ -7,6 +7,8 @@
 #include "font8x8_basic.h"
 #include <stdio.h>
 #include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "oled";
 static esp_lcd_panel_handle_t panel_hdl = NULL;
@@ -14,7 +16,8 @@ static i2c_master_bus_handle_t bus_hdl = NULL;
 static uint8_t fb[OLED_WIDTH * OLED_HEIGHT / 8] = {0};
 
 // Change the signature to accept scl_pin and sda_pin
-esp_err_t oled_init(int scl_pin, int sda_pin) {
+esp_err_t oled_init(int scl_pin, int sda_pin)
+{
   i2c_master_bus_config_t bus_cfg = {
       .clk_source = I2C_CLK_SRC_DEFAULT,
       .i2c_port = -1,
@@ -49,7 +52,8 @@ esp_err_t oled_init(int scl_pin, int sda_pin) {
   return ESP_OK;
 }
 
-esp_err_t oled_init_default(void) {
+esp_err_t oled_init_default(void)
+{
   return oled_init(OLED_SCL_PIN, OLED_SDA_PIN);
 }
 
@@ -64,8 +68,10 @@ void oled_clear(void) { memset(fb, 0, sizeof(fb)); }
  * @param y 屏幕纵向像素坐标 (0 - 63)
  * @param str 要显示的字符串内容
  */
-void oled_show_string(int x, int y, const char *str) {
-  while (*str) {
+void oled_show_string(int x, int y, const char *str)
+{
+  while (*str)
+  {
     // 如果当前字符渲染位置超出屏幕横向右边缘，强制终止防止内存越界
     if (x + 8 > OLED_WIDTH)
       break;
@@ -73,7 +79,8 @@ void oled_show_string(int x, int y, const char *str) {
     uint8_t c = (uint8_t)*str;
 
     // 安全边界控制：防止传入大于 127 的扩展 ASCII 字符导致数组越界
-    if (c > 127) {
+    if (c > 127)
+    {
       c = ' '; // 超出范围转为空格
     }
 
@@ -81,8 +88,10 @@ void oled_show_string(int x, int y, const char *str) {
     int page = y / 8;
 
     // 只有合法的页地址才会写入
-    if (page >= 0 && page < 8) {
-      for (int col = 0; col < 8; col++) {
+    if (page >= 0 && page < 8)
+    {
+      for (int col = 0; col < 8; col++)
+      {
         // 🌟 核心映射：由于此字库是标准的 128 满射字库，直接通过 c 寻址
         // 取出来的字节直接代表一列的 8 个垂直像素点，完美契合 fb 页高速缓存
         fb[page * OLED_WIDTH + (x + col)] |= font8x8_basic_tr[c][col];
@@ -134,21 +143,27 @@ void oled_show_string(int x, int y, const char *str) {
 //     }
 // }
 
-void oled_refresh(void) {
-  if (panel_hdl) {
+void oled_refresh(void)
+{
+  if (panel_hdl)
+  {
     esp_lcd_panel_draw_bitmap(panel_hdl, 0, 0, OLED_WIDTH, OLED_HEIGHT, fb);
   }
 }
 
-void oled_sleep_enter(void) {
-  if (panel_hdl) {
+void oled_sleep_enter(void)
+{
+  if (panel_hdl)
+  {
     esp_lcd_panel_disp_on_off(panel_hdl, false);
     ESP_LOGI(TAG, "OLED Power Down Sleep Mode.");
   }
 }
 
-void oled_sleep_exit(void) {
-  if (panel_hdl) {
+void oled_sleep_exit(void)
+{
+  if (panel_hdl)
+  {
     esp_lcd_panel_disp_on_off(panel_hdl, true);
     oled_refresh();
     ESP_LOGI(TAG, "OLED Awakened Successfully.");
@@ -161,15 +176,18 @@ void oled_sleep_exit(void) {
  * @param start_y 起始纵向像素坐标 (0 - 63)，建议传入 8 的倍数（如 0, 8, 16...）
  * @param str 要显示的长字符串内容（包含 \n 换行符）
  */
-void oled_show_string_wrap(int start_x, int start_y, const char *str) {
+void oled_show_string_wrap(int start_x, int start_y, const char *str)
+{
   int current_x = start_x;
   int current_y = start_y;
 
-  while (*str) {
+  while (*str)
+  {
     uint8_t c = (uint8_t)*str;
 
     // 1. 原生支持标推换行符 '\n'：强制将坐标移动到下一行的起始 X 位置
-    if (c == '\n') {
+    if (c == '\n')
+    {
       current_x = start_x;
       current_y += 8; // 纵向下移一行（8像素）
       str++;
@@ -177,34 +195,40 @@ void oled_show_string_wrap(int start_x, int start_y, const char *str) {
     }
 
     // 2. 原生支持回车符 '\r'：光标直接回到本行起始 X 位置
-    if (c == '\r') {
+    if (c == '\r')
+    {
       current_x = start_x;
       str++;
       continue;
     }
 
     // 3. 核心换行逻辑（Text Wrap）：如果当前字符写入位置会超出屏幕右侧边缘
-    if (current_x + 8 > OLED_WIDTH) {
+    if (current_x + 8 > OLED_WIDTH)
+    {
       current_x = start_x; // 强制将 X 坐标归位到起始位置
       current_y += 8;      // 纵向下移一行（8像素）
     }
 
     // 4. 纵向边界保护：如果文本行数过多，超出了屏幕最底部边缘
     // (64像素)，自动停止渲染防止显存踩踏
-    if (current_y + 8 > OLED_HEIGHT) {
+    if (current_y + 8 > OLED_HEIGHT)
+    {
       break;
     }
 
     // 安全边界控制：防止传入大于 127 的扩展 ASCII 字符导致数组越界
-    if (c > 127) {
+    if (c > 127)
+    {
       c = ' ';
     }
 
     // 计算当前 y 坐标在 SSD1306 显存中对应的 Page 页索引 (0 - 7)
     int page = current_y / 8;
 
-    if (page >= 0 && page < 8) {
-      for (int col = 0; col < 8; col++) {
+    if (page >= 0 && page < 8)
+    {
+      for (int col = 0; col < 8; col++)
+      {
         // 将 8 个垂直像素的字模点阵直接推入 fb 对应的 Page 缓冲区
         fb[page * OLED_WIDTH + (current_x + col)] |= font8x8_basic_tr[c][col];
       }
@@ -220,9 +244,11 @@ void oled_show_string_wrap(int start_x, int start_y, const char *str) {
  * @param y 像素纵坐标 (0 - 63)
  * @param color 1 代表点亮像素，0 代表熄灭像素
  */
-void oled_draw_pixel(int x, int y, uint8_t color) {
+void oled_draw_pixel(int x, int y, uint8_t color)
+{
   // 边界保护：超出屏幕物理尺寸的点直接忽略，防止内存越界踩踏
-  if (x < 0 || x >= OLED_WIDTH || y < 0 || y >= OLED_HEIGHT) {
+  if (x < 0 || x >= OLED_WIDTH || y < 0 || y >= OLED_HEIGHT)
+  {
     return;
   }
 
@@ -232,9 +258,12 @@ void oled_draw_pixel(int x, int y, uint8_t color) {
   int bit = y % 8;
 
   // 写入显存缓冲区
-  if (color) {
+  if (color)
+  {
     fb[page * OLED_WIDTH + x] |= (1 << bit); // 点亮该位
-  } else {
+  }
+  else
+  {
     fb[page * OLED_WIDTH + x] &= ~(1 << bit); // 熄灭该位
   }
 }
@@ -246,9 +275,11 @@ void oled_draw_pixel(int x, int y, uint8_t color) {
  * @param width 矩形的宽度（像素）
  * @param height 矩形的高度（像素）
  */
-void oled_draw_rectangle(int x, int y, int width, int height) {
+void oled_draw_rectangle(int x, int y, int width, int height)
+{
   // 如果宽度或高度非法，直接退出
-  if (width <= 0 || height <= 0) {
+  if (width <= 0 || height <= 0)
+  {
     return;
   }
 
@@ -257,13 +288,15 @@ void oled_draw_rectangle(int x, int y, int width, int height) {
   int y_end = y + height - 1;
 
   // 1. 绘制水平的顶部边线和底部边线
-  for (int i = x; i <= x_end; i++) {
+  for (int i = x; i <= x_end; i++)
+  {
     oled_draw_pixel(i, y, 1);     // 顶边
     oled_draw_pixel(i, y_end, 1); // 底边
   }
 
   // 2. 绘制垂直的左侧边线和右侧边线
-  for (int j = y; j <= y_end; j++) {
+  for (int j = y; j <= y_end; j++)
+  {
     oled_draw_pixel(x, j, 1);     // 左边
     oled_draw_pixel(x_end, j, 1); // 右边
   }
@@ -275,9 +308,11 @@ void oled_draw_rectangle(int x, int y, int width, int height) {
  * @param width 矩形的宽度（像素点数）
  * @param height 矩形的高度（像素点数）
  */
-void oled_fill_rectangle(int x, int y, int width, int height) {
+void oled_fill_rectangle(int x, int y, int width, int height)
+{
   // 基础边界保护：非法尺寸直接退出
-  if (width <= 0 || height <= 0 || x >= OLED_WIDTH || y >= OLED_HEIGHT) {
+  if (width <= 0 || height <= 0 || x >= OLED_WIDTH || y >= OLED_HEIGHT)
+  {
     return;
   }
 
@@ -289,12 +324,14 @@ void oled_fill_rectangle(int x, int y, int width, int height) {
   int y_start = (y < 0) ? 0 : y;
 
   // 纵向按像素行遍历，利用显存Page特性进行高速字节操作
-  for (int curr_y = y_start; curr_y <= y_end; curr_y++) {
+  for (int curr_y = y_start; curr_y <= y_end; curr_y++)
+  {
     int page = curr_y / 8; // 计算所在的 Page (0-7)
     int bit = curr_y % 8;  // 计算在该 Page 字节中的具体第几位
 
     // 横向循环：直接在这一行的所有指定 X 坐标上，将对应的 Bit 位全部置 1
-    for (int curr_x = x_start; curr_x <= x_end; curr_x++) {
+    for (int curr_x = x_start; curr_x <= x_end; curr_x++)
+    {
       fb[page * OLED_WIDTH + curr_x] |= (1 << bit);
     }
   }
@@ -308,15 +345,18 @@ void oled_fill_rectangle(int x, int y, int width, int height) {
  * @param invert 反色控制：0 代表正常显示(黑底白字)；1 代表反色显示(白底黑字)
  */
 void oled_show_string_ex(int start_x, int start_y, const char *str,
-                         uint8_t invert) {
+                         uint8_t invert)
+{
   int current_x = start_x;
   int current_y = start_y;
 
-  while (*str) {
+  while (*str)
+  {
     uint8_t c = (uint8_t)*str;
 
     // 1. 解析标准换行符 '\n'
-    if (c == '\n') {
+    if (c == '\n')
+    {
       current_x = start_x;
       current_y += 8;
       str++;
@@ -324,40 +364,49 @@ void oled_show_string_ex(int start_x, int start_y, const char *str,
     }
 
     // 2. 解析回车符 '\r'
-    if (c == '\r') {
+    if (c == '\r')
+    {
       current_x = start_x;
       str++;
       continue;
     }
 
     // 3. 边界自动换行 (Text Wrap)
-    if (current_x + 8 > OLED_WIDTH) {
+    if (current_x + 8 > OLED_WIDTH)
+    {
       current_x = start_x;
       current_y += 8;
     }
 
     // 4. 纵向越界保护
-    if (current_y + 8 > OLED_HEIGHT) {
+    if (current_y + 8 > OLED_HEIGHT)
+    {
       break;
     }
 
-    if (c > 127) {
+    if (c > 127)
+    {
       c = ' ';
     }
 
     int page = current_y / 8;
 
-    if (page >= 0 && page < 8) {
-      for (int col = 0; col < 8; col++) {
+    if (page >= 0 && page < 8)
+    {
+      for (int col = 0; col < 8; col++)
+      {
         // 🌟 核心升级：从字库中获取原始字模字节
         uint8_t font_byte = font8x8_basic_tr[c][col];
 
-        if (invert) {
+        if (invert)
+        {
           // 反色模式下：对字模按位取反，并且由于是要在白背景写黑字，
           // 必须先清空（&=
           // ~）当前位置原本可能残留的旧数据，再强制覆盖注入取反后的白背景点阵
           fb[page * OLED_WIDTH + (current_x + col)] = ~font_byte;
-        } else {
+        }
+        else
+        {
           // 正常模式下：保持原始增量按位或写入
           fb[page * OLED_WIDTH + (current_x + col)] |= font_byte;
         }
@@ -378,7 +427,8 @@ void oled_show_string_ex(int start_x, int start_y, const char *str,
  * @param y2 终点纵坐标 (0 - 63)
  * @param color 1 代表点亮线段像素，0 代表擦除线段
  */
-void oled_draw_line(int x1, int y1, int x2, int y2, uint8_t color) {
+void oled_draw_line(int x1, int y1, int x2, int y2, uint8_t color)
+{
   // 计算两点在 X 和 Y 轴上的绝对距离
   int dx = abs(x2 - x1);
   int dy = abs(y2 - y1);
@@ -391,12 +441,14 @@ void oled_draw_line(int x1, int y1, int x2, int y2, uint8_t color) {
   int err = dx - dy;
   int e2;
 
-  while (1) {
+  while (1)
+  {
     // 🌟 复用之前已经经过边界保护的物理画点函数，确保安全写入
     oled_draw_pixel(x1, y1, color);
 
     // 如果起点和终点重合，说明线段绘制完毕，安全退出
-    if (x1 == x2 && y1 == y2) {
+    if (x1 == x2 && y1 == y2)
+    {
       break;
     }
 
@@ -404,13 +456,15 @@ void oled_draw_line(int x1, int y1, int x2, int y2, uint8_t color) {
     e2 = 2 * err;
 
     // 决定是否在 X 方向上步进像素
-    if (e2 > -dy) {
+    if (e2 > -dy)
+    {
       err -= dy;
       x1 += sx;
     }
 
     // 决定是否在 Y 方向上步进像素
-    if (e2 < dx) {
+    if (e2 < dx)
+    {
       err += dx;
       y1 += sy;
     }
@@ -423,7 +477,8 @@ void oled_draw_line(int x1, int y1, int x2, int y2, uint8_t color) {
  * @param r  圆的半径（像素点数，必须大于 0）
  * @param color 1 代表点亮圆形像素，0 代表擦除圆形
  */
-void oled_draw_circle(int xc, int yc, int r, uint8_t color) {
+void oled_draw_circle(int xc, int yc, int r, uint8_t color)
+{
   if (r <= 0)
     return;
 
@@ -432,7 +487,8 @@ void oled_draw_circle(int xc, int yc, int r, uint8_t color) {
   int d = 3 - 2 * r; // 初始决策参数
 
   // 🌟 利用圆的八分对称性，同时绘制 8 个镜像对称点
-  while (x <= y) {
+  while (x <= y)
+  {
     oled_draw_pixel(xc + x, yc + y, color); // 第 1 象限
     oled_draw_pixel(xc - x, yc + y, color); // 第 2 象限
     oled_draw_pixel(xc + x, yc - y, color); // 第 3 象限
@@ -443,9 +499,12 @@ void oled_draw_circle(int xc, int yc, int r, uint8_t color) {
     oled_draw_pixel(xc - y, yc - x, color); // 第 8 象限
 
     // 核心步进决策
-    if (d < 0) {
+    if (d < 0)
+    {
       d = d + 4 * x + 6;
-    } else {
+    }
+    else
+    {
       d = d + 4 * (x - y) + 10;
       y--;
     }
@@ -458,17 +517,21 @@ void oled_draw_circle(int xc, int yc, int r, uint8_t color) {
  * @param flash_count 闪烁的次数
  * @param delay_ms 每次闪烁的亮灭维持时间（毫秒）
  */
-void oled_flash_screen(int flash_count, int delay_ms) {
-  for (int k = 0; k < flash_count; k++) {
+void oled_flash_screen(int flash_count, int delay_ms)
+{
+  for (int k = 0; k < flash_count; k++)
+  {
     // 1. 第一次取反：将全屏所有像素反转（原本黑的变白，白的变黑）
-    for (int i = 0; i < OLED_WIDTH * OLED_HEIGHT / 8; i++) {
+    for (int i = 0; i < OLED_WIDTH * OLED_HEIGHT / 8; i++)
+    {
       fb[i] = ~fb[i];
     }
     esp_lcd_panel_draw_bitmap(panel_hdl, 0, 0, OLED_WIDTH, OLED_HEIGHT, fb);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     // 2. 第二次取反：再次反转，完美还原原本的显存内容
-    for (int i = 0; i < OLED_WIDTH * OLED_HEIGHT / 8; i++) {
+    for (int i = 0; i < OLED_WIDTH * OLED_HEIGHT / 8; i++)
+    {
       fb[i] = ~fb[i];
     }
     esp_lcd_panel_draw_bitmap(panel_hdl, 0, 0, OLED_WIDTH, OLED_HEIGHT, fb);
@@ -483,19 +546,22 @@ void oled_flash_screen(int flash_count, int delay_ms) {
  * @param intensity 震动烈度（像素位移幅值，建议 2 - 6 像素）
  * @param duration_ms 总震动持续时间（毫秒）
  */
-void oled_shake_screen(int intensity, int duration_ms) {
+void oled_shake_screen(int intensity, int duration_ms)
+{
   if (!panel_hdl || intensity <= 0)
     return;
 
   int elapsed = 0;
   int step_delay = 15; // 每次抖动的间隔（毫秒）
 
-  while (elapsed < duration_ms) {
+  while (elapsed < duration_ms)
+  {
     // 交替产生正负像素位移
     int offset_y = (elapsed % 2 == 0) ? intensity : -intensity;
 
     // 纵向遍历 8 个 Page
-    for (int p = 0; p < 8; p++) {
+    for (int p = 0; p < 8; p++)
+    {
       // 计算循环滚动后的目标 Page 页
       int target_page = (p + offset_y + 8) % 8;
 
@@ -524,11 +590,13 @@ void oled_shake_screen(int intensity, int duration_ms) {
  * @param start_y 渲染起始纵坐标 (0 - 63)，建议为 24 左右以实现纵向居中
  * @param str 要显示的字符串内容
  */
-void oled_show_string_16x16_bold(int start_x, int start_y, const char *str) {
+void oled_show_string_16x16_bold(int start_x, int start_y, const char *str)
+{
   int current_x = start_x;
 
   // 🌟 核心升级：如果传入 -1，自动计算 X 坐标使其在 128 宽的屏幕上完美居中
-  if (start_x == -1) {
+  if (start_x == -1)
+  {
     int str_len = strlen(str);
     int total_width = str_len * 16; // 每个 16x16 字符物理占用 16 像素宽
     current_x = (OLED_WIDTH - total_width) / 2;
@@ -536,7 +604,8 @@ void oled_show_string_16x16_bold(int start_x, int start_y, const char *str) {
       current_x = 0; // 防止字符串超长导致坐标变负
   }
 
-  while (*str) {
+  while (*str)
+  {
     if (current_x + 16 > OLED_WIDTH)
       break;
 
@@ -547,13 +616,16 @@ void oled_show_string_16x16_bold(int start_x, int start_y, const char *str) {
     int page_top = start_y / 8;
     int page_bottom = page_top + 1;
 
-    for (int col = 0; col < 8; col++) {
+    for (int col = 0; col < 8; col++)
+    {
       uint8_t src_byte = font8x8_basic_tr[c][col];
 
       // 纵向插值放大
       uint16_t expanded_word = 0;
-      for (int bit = 0; bit < 8; bit++) {
-        if (src_byte & (1 << bit)) {
+      for (int bit = 0; bit < 8; bit++)
+      {
+        if (src_byte & (1 << bit))
+        {
           expanded_word |= (3 << (bit * 2));
         }
       }
@@ -562,16 +634,20 @@ void oled_show_string_16x16_bold(int start_x, int start_y, const char *str) {
       uint8_t bottom_byte = (uint8_t)((expanded_word >> 8) & 0xFF);
 
       // 横向倍增 2 次 ＋ 错位按位或实现边缘加粗 (Bold)
-      for (int repeat = 0; repeat < 2; repeat++) {
+      for (int repeat = 0; repeat < 2; repeat++)
+      {
         int out_x = current_x + (col * 2) + repeat;
 
-        if (out_x < OLED_WIDTH) {
-          if (page_top >= 0 && page_top < 8) {
+        if (out_x < OLED_WIDTH)
+        {
+          if (page_top >= 0 && page_top < 8)
+          {
             fb[page_top * OLED_WIDTH + out_x] |= top_byte;
             if (out_x + 1 < OLED_WIDTH)
               fb[page_top * OLED_WIDTH + (out_x + 1)] |= top_byte;
           }
-          if (page_bottom >= 0 && page_bottom < 8) {
+          if (page_bottom >= 0 && page_bottom < 8)
+          {
             fb[page_bottom * OLED_WIDTH + out_x] |= bottom_byte;
             if (out_x + 1 < OLED_WIDTH)
               fb[page_bottom * OLED_WIDTH + (out_x + 1)] |= bottom_byte;
@@ -591,7 +667,8 @@ void oled_show_string_16x16_bold(int start_x, int start_y, const char *str) {
  * format-truncation 警告错误
  */
 void oled_draw_progress_bar(int x, int y, int width, int height, int current,
-                            int max) {
+                            int max)
+{
   if (max <= 0 || width <= 4 || height <= 4)
     return;
   if (current > max)
@@ -610,7 +687,8 @@ void oled_draw_progress_bar(int x, int y, int width, int height, int current,
   int fill_width = (current * max_fill_width) / max;
 
   // 4. 在内部绘制实心填充条
-  if (fill_width > 0) {
+  if (fill_width > 0)
+  {
     oled_fill_rectangle(x + 2, y + 2, fill_width, fill_height);
   }
 
